@@ -1,0 +1,12 @@
+# Local-development overrides (auto-merged by `docker compose`).
+# Exposes Postgres (and Redis) to the host on 127.0.0.1 only, so tools like
+# DBeaver can connect. Do NOT use this on a public server — delete it or keep
+# it out of your production deploy.
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
