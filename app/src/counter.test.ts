@@ -52,12 +52,12 @@ function makeFakePool(maxLinkId: bigint | null) {
 }
 
 // Loaded once env is in place.
-let db: typeof import('./db');
-let counter: typeof import('./counter');
+let db: typeof import('./db.js');
+let counter: typeof import('./counter.js');
 
 before(async () => {
-  db = await import('./db');
-  counter = await import('./counter');
+  db = await import('./db.js');
+  counter = await import('./counter.js');
 });
 
 beforeEach(() => {
@@ -150,7 +150,7 @@ test('postgres backend draws IDs from nextval()', async () => {
   const original = process.env.COUNTER_BACKEND;
   counter; // ensure loaded
   // getNextId / initCounter read env.COUNTER_BACKEND dynamically.
-  const env = (await import('./env')).env;
+  const env = (await import('./env.js')).env;
   env.COUNTER_BACKEND = 'postgres';
 
   let seq = counter.COUNTER_OFFSET;
