@@ -1,10 +1,13 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import formbody from '@fastify/formbody';
+import cors from '@fastify/cors';
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { env } from './env';
 import { getPool, getRedis, closeDb } from './db';
 import { registerHealthRoutes } from './routes/health';
+import { registerShortenRoutes } from './routes/shorten';
+import { registerRedirectRoutes } from './routes/redirect';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -35,8 +38,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.decorate('pg', pool);
   app.decorate('redis', redis);
 
+  // CORS: lets the browser-served UI call this API cross-origin during local
+  // dev (e.g. UI on http://localhost → API on http://localhost:3000). For
+  // production behind nginx (same origin) this is harmless. Reflects the
+  // request origin; tighten to an allowlist before exposing publicly.
+  await app.register(cors, {
+    origin: true,
+    methods: ['GET', 'POST'],
+  });
+
   await app.register(formbody);
   await registerHealthRoutes(app);
+  await registerShortenRoutes(app);
+  await registerRedirectRoutes(app); // parametric /:code — register last
 
   app.addHook('onClose', async () => {
     await closeDb();

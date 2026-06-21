@@ -165,16 +165,117 @@
     <div class="logo">🌷 Klip</div>
     <p class="tagline">Shorten links. Escape the webview. Bloom anywhere.</p>
 
-    <form class="field" onsubmit="event.preventDefault();">
-      <input type="url" placeholder="Paste a long URL…" aria-label="Long URL" />
-      <button type="submit">Klip it</button>
+    <form id="klip-form" class="field">
+      <input id="klip-url" type="url" placeholder="Paste a long URL…" aria-label="Long URL" required />
+      <button id="klip-submit" type="submit">Klip it</button>
     </form>
 
-    <p class="note">
-      Frontend coming soon
-      <br />
-      <span class="badge">UI placeholder</span>
-    </p>
+    <div id="klip-result" class="result" hidden></div>
   </main>
+
+  <style>
+    .result {
+      margin-top: 1.5rem;
+      padding: 1rem 1.1rem;
+      border-radius: 16px;
+      font-weight: 500;
+      word-break: break-all;
+    }
+    .result.pending { background: rgba(179, 136, 255, 0.12); color: var(--violet); }
+    .result.success {
+      background: rgba(255, 179, 217, 0.18);
+      border: 1px solid rgba(255, 126, 182, 0.35);
+      display: flex; flex-direction: column; gap: 0.6rem; align-items: center;
+    }
+    .result.error {
+      background: rgba(255, 99, 132, 0.10);
+      color: #c2185b;
+      border: 1px solid rgba(255, 99, 132, 0.3);
+    }
+    .result-label {
+      font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--violet);
+    }
+    .result-link { font-size: 1.15rem; font-weight: 700; color: var(--rose); text-decoration: none; }
+    .result-link:hover { text-decoration: underline; }
+    .copy-btn {
+      padding: 0.45rem 1.1rem; border: none; border-radius: 12px; cursor: pointer;
+      font: inherit; font-weight: 600; color: white;
+      background: linear-gradient(100deg, var(--rose), var(--violet));
+    }
+    #klip-submit[disabled] { opacity: 0.6; cursor: progress; }
+  </style>
+
+  <script>
+    (function () {
+      // Local-dev target: the app run via `npm run dev` on port 3000.
+      // (CORS is enabled on the backend so this cross-origin call works.)
+      // For an all-Docker setup, change this back to the relative '/api/v1/shorten'.
+      var API_URL = 'http://localhost:3000/api/v1/shorten';
+
+      var form = document.getElementById('klip-form');
+      var input = document.getElementById('klip-url');
+      var button = document.getElementById('klip-submit');
+      var result = document.getElementById('klip-result');
+
+      function show(html, kind) {
+        result.hidden = false;
+        result.className = 'result ' + (kind || '');
+        result.innerHTML = html;
+      }
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var url = input.value.trim();
+        if (!url) return;
+
+        var original = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Klipping…';
+        show('Shortening…', 'pending');
+
+        try {
+          var res = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // Body matches the backend Zod schema. private/analytics are sent
+            // explicitly; customAlias/expiresAt are omitted (optional).
+            body: JSON.stringify({ url: url, private: false, analytics: true }),
+          });
+
+          var data = await res.json().catch(function () { return {}; });
+
+          if (res.status === 201 && data.shortUrl) {
+            show(
+              '<span class="result-label">Your Klip</span>' +
+                '<a class="result-link" href="' + data.shortUrl + '" target="_blank" rel="noopener">' +
+                data.shortUrl + '</a>' +
+                '<button type="button" class="copy-btn" data-copy="' + data.shortUrl + '">Copy</button>',
+              'success'
+            );
+            input.value = '';
+          } else {
+            var msg = data && data.message ? data.message : 'Request failed (HTTP ' + res.status + ')';
+            show('⚠️ ' + msg, 'error');
+          }
+        } catch (err) {
+          show('⚠️ Could not reach the backend. ' + (err && err.message ? err.message : ''), 'error');
+        } finally {
+          button.disabled = false;
+          button.textContent = original;
+        }
+      });
+
+      // Copy-to-clipboard for the result link.
+      result.addEventListener('click', function (e) {
+        var t = e.target;
+        if (t && t.classList.contains('copy-btn')) {
+          navigator.clipboard.writeText(t.getAttribute('data-copy')).then(function () {
+            t.textContent = 'Copied!';
+            setTimeout(function () { t.textContent = 'Copy'; }, 1500);
+          });
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
