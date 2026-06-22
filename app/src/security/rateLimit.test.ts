@@ -6,8 +6,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL ??= 'postgres://klip:test@localhost:5432/klip';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
-process.env.HASHIDS_SALT ??= 'test-salt';
-process.env.SESSION_SECRET ??= 'test-session-secret-0123456789';
+process.env.HASHIDS_SALT ??= 'test-salt-0123456789-abcdef';
+process.env.SESSION_SECRET ??= 'test-session-secret-0123456789-abcdef';
 
 // -----------------------------------------------------------------------------
 // Fakes

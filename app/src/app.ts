@@ -1,6 +1,8 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import formbody from '@fastify/formbody';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
+import { securityHeaders } from './plugins/securityHeaders';
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { env } from './env';
@@ -57,6 +59,14 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(formbody);
+
+  // Cookie parsing (request.cookies) + signing helpers. MUST register before the
+  // auth hook below, since that hook reads the session cookie on every request.
+  await app.register(cookie);
+
+  // Hardened security headers on all non-redirect responses (API, interstitial,
+  // 404). See plugins/securityHeaders.ts; HSTS stays at the nginx layer.
+  await app.register(securityHeaders);
 
   // Populate request.user from a session token on every request (optional auth).
   // Protected routes additionally use the `requireAuth` preHandler.
