@@ -142,12 +142,20 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
     // Explicit commit — data is durable and visible to other clients now.
     await client.query('COMMIT');
 
-    // 4. Best-effort cache. The redirect path falls back to the DB on a miss,
-    // so a Redis hiccup must not fail link creation.
-    try {
-      await redisClient.set(`klip:url:${shortCode}`, body.url, 'EX', env.REDIS_URL_TTL);
-    } catch (err) {
-      request.log.warn({ err, shortCode }, 'shorten: redis cache write failed (non-fatal)');
+    // 4. Best-effort cache — only for public, analytics-on (302) links, matching
+    // the redirect read path. Store {u,id} so cache-hit redirects can still
+    // record analytics. A Redis hiccup must not fail link creation.
+    if (!body.private && body.analytics) {
+      try {
+        await redisClient.set(
+          `klip:url:${shortCode}`,
+          JSON.stringify({ u: body.url, id }),
+          'EX',
+          env.REDIS_URL_TTL,
+        );
+      } catch (err) {
+        request.log.warn({ err, shortCode }, 'shorten: redis cache write failed (non-fatal)');
+      }
     }
 
     // 7. Success.

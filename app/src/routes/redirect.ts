@@ -1,9 +1,12 @@
-import { FastifyInstance, FastifyReply, FastifyRequest, FastifyBaseLogger } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getPool, getRedis } from '../db';
 import { env } from '../env';
 import { detectWebview } from '../webview/detect';
 import { buildAndroidEscapePage } from '../webview/android';
 import { buildIosEscapePage } from '../webview/ios';
+import { enqueueClick } from '../analytics/clickWriter';
+import { hashIp, getCountry } from '../analytics/geoip';
+import { parseUA } from '../analytics/ua';
 
 /**
  * GET /:code — resolve a short code to its destination and redirect.
@@ -47,16 +50,6 @@ interface LinkRow {
   owner_id: string | null;
 }
 
-interface ClickEvent {
-  code: string;
-  linkId: string | null;
-  ts: number;
-  ua: string;
-  referer: string | null;
-  ip: string;
-  isWebview: boolean;
-}
-
 /** Owner of the request, or null (populated by the global authenticate hook). */
 function getOwnerId(request: FastifyRequest): string | null {
   return request.user?.userId ?? null;
@@ -66,45 +59,39 @@ function notFound(reply: FastifyReply): FastifyReply {
   return reply.code(404).type('text/html; charset=utf-8').send(NOT_FOUND_HTML);
 }
 
-// -----------------------------------------------------------------------------
-// Fire-and-forget click queue. Off the hot path via setImmediate; the worker is
-// a STUB that logs at debug level (P1 batch-inserts into clicks/clicks_daily).
-// -----------------------------------------------------------------------------
-const clickQueue: ClickEvent[] = [];
-let draining = false;
-
-function enqueueClick(event: ClickEvent, log: FastifyBaseLogger): void {
-  clickQueue.push(event);
-  if (!draining) {
-    draining = true;
-    setImmediate(drainClicks, log);
-  }
+// Off the hot path: record a click for a 302 / webview interstitial. Skips when
+// the link id is unknown (e.g. a legacy plain-URL cache entry).
+function recordClick(request: FastifyRequest, linkId: string | null, isWebview: boolean): void {
+  if (linkId === null) return;
+  setImmediate(() => {
+    const ua = parseUA((request.headers['user-agent'] as string) ?? '');
+    enqueueClick({
+      linkId: BigInt(linkId),
+      createdAt: new Date(),
+      ipHash: hashIp(request.ip),
+      country: getCountry(request.ip),
+      referer: (request.headers.referer as string) ?? '',
+      uaBrowser: ua.browser,
+      uaOs: ua.os,
+      uaDevice: ua.device,
+      isWebview,
+    });
+  });
 }
 
-function drainClicks(log: FastifyBaseLogger): void {
-  const batch = clickQueue.splice(0, clickQueue.length);
-  for (const event of batch) {
-    log.debug({ click: event }, 'click event (stub worker)');
+// Parse a cache entry: JSON {u,id} (current) or a legacy plain-URL string.
+function parseCacheEntry(value: string): { url: string; linkId: string | null } {
+  if (value.charCodeAt(0) === 0x7b /* "{" */) {
+    try {
+      const obj = JSON.parse(value) as { u?: unknown; id?: unknown };
+      if (typeof obj.u === 'string') {
+        return { url: obj.u, linkId: typeof obj.id === 'string' ? obj.id : null };
+      }
+    } catch {
+      // fall through to legacy plain-URL handling
+    }
   }
-  draining = false;
-}
-
-function makeClick(
-  code: string,
-  linkId: string | null,
-  ua: string,
-  request: FastifyRequest,
-  webview: boolean,
-): ClickEvent {
-  return {
-    code,
-    linkId,
-    ts: Date.now(),
-    ua,
-    referer: (request.headers.referer as string) ?? null,
-    ip: request.ip,
-    isWebview: webview,
-  };
+  return { url: value, linkId: null };
 }
 
 async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
@@ -124,7 +111,9 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
       return notFound(reply);
     }
     // Cache holds only public 302 links, so we can redirect with no DB work.
-    longUrl = cached;
+    const entry = parseCacheEntry(cached);
+    longUrl = entry.url;
+    linkId = entry.linkId;
   } else {
     const pgPool = getPool();
 
@@ -161,9 +150,10 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
     ownerId = row.owner_id;
     linkId = row.id;
 
-    // Repopulate cache only for public 302 links (see module note).
+    // Repopulate cache only for public 302 links, storing the link id so cache
+    // hits can still record analytics.
     if (!isPrivate && !prefer301) {
-      await redisClient.set(key, longUrl, 'EX', env.REDIS_URL_TTL);
+      await redisClient.set(key, JSON.stringify({ u: longUrl, id: linkId }), 'EX', env.REDIS_URL_TTL);
     }
   }
 
@@ -181,7 +171,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   // Android in-app browser → serve the Chrome-intent escape page (200 HTML),
   // not a redirect. Record the click (is_webview) off the hot path.
   if (webview.isWebview && webview.platform === 'android') {
-    enqueueClick(makeClick(code, linkId, ua, request, true), request.log);
+    recordClick(request, linkId, true);
     const html = buildAndroidEscapePage(longUrl, webview.network ?? 'generic');
     return reply
       .code(200)
@@ -191,7 +181,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   }
   // iOS in-app browser → serve the Safari-escape interstitial (200 HTML).
   if (webview.isWebview && webview.platform === 'ios') {
-    enqueueClick(makeClick(code, linkId, ua, request, true), request.log);
+    recordClick(request, linkId, true);
     const html = buildIosEscapePage(longUrl, webview.network ?? 'generic');
     return reply
       .code(200)
@@ -207,8 +197,8 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
     return reply.redirect(longUrl, 301);
   }
 
-  // 302 (default): not cacheable, analytics on — enqueue click, don't await.
-  enqueueClick(makeClick(code, linkId, ua, request, false), request.log);
+  // 302 (default): not cacheable, analytics on — record click off the hot path.
+  recordClick(request, linkId, false);
   reply.header('Cache-Control', 'no-store');
   return reply.redirect(longUrl, 302);
 }

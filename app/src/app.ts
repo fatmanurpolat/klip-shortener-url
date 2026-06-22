@@ -10,6 +10,7 @@ import { registerShortenRoutes } from './routes/shorten';
 import { registerRedirectRoutes } from './routes/redirect';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAuthHook } from './middleware/authenticate';
+import { initClickWriter } from './analytics/clickWriter';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -61,6 +62,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerShortenRoutes(app);
   await registerRedirectRoutes(app); // parametric /:code — register last
+
+  // Start the background click-batch writer.
+  initClickWriter(app.log);
 
   app.addHook('onClose', async () => {
     await closeDb();
