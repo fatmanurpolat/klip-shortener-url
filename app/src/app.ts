@@ -31,7 +31,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     logger: {
       level: env.NODE_ENV === 'production' ? 'info' : 'debug',
     },
-    trustProxy: true,
+    // Honor X-Forwarded-For (so req.ip is the real client) only behind a trusted
+    // proxy — gated by TRUST_PROXY so XFF can't be spoofed in untrusted setups.
+    trustProxy: env.TRUST_PROXY,
   });
 
   const pool = getPool();

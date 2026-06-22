@@ -4,12 +4,9 @@ import { getNextId } from '../counter';
 import { mintCode, COUNTER_OFFSET } from '../codes';
 import { getPool } from '../db';
 import { env } from '../env';
-import { setCachedUrl, checkRateLimit } from '../cache';
+import { setCachedUrl } from '../cache';
 import { validateUrl, UrlSafetyError, urlSafetyResponse } from '../security/urlSafety';
-
-// Per-IP rate limit for link creation.
-const SHORTEN_RATE_LIMIT = 20;
-const SHORTEN_RATE_WINDOW = 60; // seconds
+import { rateLimit } from '../security/rateLimit';
 
 /**
  * POST /api/v1/shorten — mint a short code and persist a link.
@@ -75,12 +72,7 @@ function sendValidationError(error: z.ZodError, reply: FastifyReply): FastifyRep
 }
 
 async function handleShorten(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
-  // Rate limit per client IP before doing any work.
-  const rl = await checkRateLimit(`klip:rl:shorten:ip:${request.ip}`, SHORTEN_RATE_LIMIT, SHORTEN_RATE_WINDOW);
-  if (!rl.allowed) {
-    reply.header('Retry-After', String(SHORTEN_RATE_WINDOW));
-    return reply.code(429).send({ error: 'rate_limited', message: 'Too many requests. Please slow down.' });
-  }
+  // Rate limiting runs in the rateLimit('shorten', …) preHandler (see route reg).
 
   // 1. Validate the body strictly with Zod.
   const parsed = bodySchema.safeParse(request.body);
@@ -204,5 +196,8 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
 }
 
 export async function registerShortenRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/api/v1/shorten', handleShorten);
+  // Rate limit: anonymous 10/min by IP, authenticated 120/min by user. The
+  // global `authenticate` onRequest hook has already populated request.user, so
+  // the preHandler can pick the right key/limit (no need to re-run auth here).
+  app.post('/api/v1/shorten', { preHandler: rateLimit('shorten', 10, 120) }, handleShorten);
 }
