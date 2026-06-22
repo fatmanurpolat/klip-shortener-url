@@ -3,6 +3,7 @@ import { getPool, getRedis } from '../db';
 import { env } from '../env';
 import { detectWebview } from '../webview/detect';
 import { buildAndroidEscapePage } from '../webview/android';
+import { buildIosEscapePage } from '../webview/ios';
 
 /**
  * GET /:code — resolve a short code to its destination and redirect.
@@ -188,8 +189,17 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
       .header('Cache-Control', 'no-store')
       .send(html);
   }
-  // iOS / other webviews fall through to a normal redirect for now (the iOS
-  // escape is handled in a later phase).
+  // iOS in-app browser → serve the Safari-escape interstitial (200 HTML).
+  if (webview.isWebview && webview.platform === 'ios') {
+    enqueueClick(makeClick(code, linkId, ua, request, true), request.log);
+    const html = buildIosEscapePage(longUrl, webview.network ?? 'generic');
+    return reply
+      .code(200)
+      .type('text/html; charset=utf-8')
+      .header('Cache-Control', 'no-store')
+      .send(html);
+  }
+  // Non-webview (or webview on another platform) → normal redirect below.
 
   // 301: cacheable, analytics off — no click tracking.
   if (prefer301) {
