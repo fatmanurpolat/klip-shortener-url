@@ -5,6 +5,7 @@ import { mintCode, COUNTER_OFFSET } from '../codes';
 import { getPool } from '../db';
 import { env } from '../env';
 import { setCachedUrl, checkRateLimit } from '../cache';
+import { validateUrl, UrlSafetyError, type UrlSafetyCode } from '../security/urlSafety';
 
 // Per-IP rate limit for link creation.
 const SHORTEN_RATE_LIMIT = 20;
@@ -73,6 +74,34 @@ function sendValidationError(error: z.ZodError, reply: FastifyReply): FastifyRep
   });
 }
 
+// HTTP status per URL-safety failure. Client-input problems are 400; a URL that
+// is well-formed but disallowed (blocked domain / known-malicious) is 422.
+const URL_SAFETY_STATUS: Record<UrlSafetyCode, number> = {
+  INVALID_SCHEME: 400,
+  PRIVATE_HOST: 400,
+  UNRESOLVABLE_HOST: 400,
+  SELF_REFERENTIAL: 400,
+  BLOCKED_DOMAIN: 422,
+  MALICIOUS_URL: 422,
+};
+
+// `error` field for each code. The 422s share "unsafe_url" per the API contract.
+const URL_SAFETY_ERROR_FIELD: Record<UrlSafetyCode, string> = {
+  INVALID_SCHEME: 'invalid_url',
+  PRIVATE_HOST: 'blocked_host',
+  UNRESOLVABLE_HOST: 'unresolvable_host',
+  SELF_REFERENTIAL: 'self_referential',
+  BLOCKED_DOMAIN: 'unsafe_url',
+  MALICIOUS_URL: 'unsafe_url',
+};
+
+/** Map a URL-safety failure to its HTTP response. */
+function sendUrlSafetyError(err: UrlSafetyError, reply: FastifyReply): FastifyReply {
+  return reply
+    .code(URL_SAFETY_STATUS[err.code])
+    .send({ error: URL_SAFETY_ERROR_FIELD[err.code], message: err.message });
+}
+
 async function handleShorten(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   // Rate limit per client IP before doing any work.
   const rl = await checkRateLimit(`klip:rl:shorten:ip:${request.ip}`, SHORTEN_RATE_LIMIT, SHORTEN_RATE_WINDOW);
@@ -99,6 +128,21 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
     return reply
       .code(400)
       .send({ error: 'reserved_alias', message: 'This alias is reserved and cannot be used.' });
+  }
+
+  // URL safety: scheme / private-host / DNS-rebinding / self-referential /
+  // domain blocklist / Safe Browsing. Runs only on this write path (never on
+  // the redirect hot path) and before any ID allocation or DB writes.
+  try {
+    await validateUrl(body.url, request.log);
+  } catch (err) {
+    if (err instanceof UrlSafetyError) {
+      return sendUrlSafetyError(err, reply);
+    }
+    // Unexpected error inside the validator → fail closed (do not create a link
+    // we could not vet).
+    request.log.error({ err }, 'shorten: url safety check errored');
+    return reply.code(500).send({ error: 'internal_error', message: 'Could not validate the URL.' });
   }
 
   // 2-3. Allocate a unique ID and derive the short code. Custom aliases also
