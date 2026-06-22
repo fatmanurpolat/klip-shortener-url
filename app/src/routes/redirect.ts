@@ -61,7 +61,12 @@ function notFound(reply: FastifyReply): FastifyReply {
 
 // Off the hot path: record a click for a 302 / webview interstitial. Skips when
 // the link id is unknown (e.g. a legacy plain-URL cache entry).
-function recordClick(request: FastifyRequest, linkId: string | null, isWebview: boolean): void {
+function recordClick(
+  request: FastifyRequest,
+  linkId: string | null,
+  isWebview: boolean,
+  network: string | null,
+): void {
   if (linkId === null) return;
   setImmediate(() => {
     const ua = parseUA((request.headers['user-agent'] as string) ?? '');
@@ -74,6 +79,7 @@ function recordClick(request: FastifyRequest, linkId: string | null, isWebview: 
       uaBrowser: ua.browser,
       uaOs: ua.os,
       uaDevice: ua.device,
+      uaNetwork: network,
       isWebview,
     });
   });
@@ -171,7 +177,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   // Android in-app browser → serve the Chrome-intent escape page (200 HTML),
   // not a redirect. Record the click (is_webview) off the hot path.
   if (webview.isWebview && webview.platform === 'android') {
-    recordClick(request, linkId, true);
+    recordClick(request, linkId, true, webview.network);
     const html = buildAndroidEscapePage(longUrl, webview.network ?? 'generic');
     return reply
       .code(200)
@@ -181,7 +187,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   }
   // iOS in-app browser → serve the Safari-escape interstitial (200 HTML).
   if (webview.isWebview && webview.platform === 'ios') {
-    recordClick(request, linkId, true);
+    recordClick(request, linkId, true, webview.network);
     const html = buildIosEscapePage(longUrl, webview.network ?? 'generic');
     return reply
       .code(200)
@@ -198,7 +204,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   }
 
   // 302 (default): not cacheable, analytics on — record click off the hot path.
-  recordClick(request, linkId, false);
+  recordClick(request, linkId, false, webview.network);
   reply.header('Cache-Control', 'no-store');
   return reply.redirect(longUrl, 302);
 }

@@ -17,6 +17,7 @@ export type ClickEvent = {
   uaBrowser: string;
   uaOs: string;
   uaDevice: string;
+  uaNetwork: string | null; // webview network, or null for non-webview
   isWebview: boolean;
 };
 
@@ -69,14 +70,13 @@ async function writeBatch(batch: ClickEvent[]): Promise<void> {
     await client.query('BEGIN');
 
     // 1) One multi-row INSERT into the (partitioned) clicks table.
-    const COLS = 9;
+    const COLS = 10;
     const rows: string[] = [];
     const values: unknown[] = [];
     batch.forEach((e, i) => {
       const b = i * COLS;
-      rows.push(
-        `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9})`,
-      );
+      const ph = Array.from({ length: COLS }, (_, k) => `$${b + k + 1}`).join(',');
+      rows.push(`(${ph})`);
       values.push(
         e.linkId.toString(), // bigint → text (node-postgres can't serialize BigInt)
         e.createdAt,
@@ -86,12 +86,13 @@ async function writeBatch(batch: ClickEvent[]): Promise<void> {
         e.uaBrowser,
         e.uaOs,
         e.uaDevice,
+        e.uaNetwork,
         e.isWebview,
       );
     });
     await client.query(
       `INSERT INTO clicks
-         (link_id, created_at, ip_hash, country, referer, ua_browser, ua_os, ua_device, is_webview)
+         (link_id, created_at, ip_hash, country, referer, ua_browser, ua_os, ua_device, ua_network, is_webview)
        VALUES ${rows.join(',')}`,
       values,
     );

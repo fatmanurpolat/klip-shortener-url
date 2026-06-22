@@ -7,6 +7,7 @@ import { env } from './env';
 import { getPool, getRedis, closeDb } from './db';
 import { registerHealthRoutes } from './routes/health';
 import { registerShortenRoutes } from './routes/shorten';
+import { registerStatsRoutes } from './routes/stats';
 import { registerRedirectRoutes } from './routes/redirect';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAuthHook } from './middleware/authenticate';
@@ -61,6 +62,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerHealthRoutes(app);
   await registerAuthRoutes(app);
   await registerShortenRoutes(app);
+  await registerStatsRoutes(app);
   await registerRedirectRoutes(app); // parametric /:code — register last
 
   // Start the background click-batch writer.
