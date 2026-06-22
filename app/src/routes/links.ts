@@ -4,6 +4,7 @@ import { getPool } from '../db';
 import { env } from '../env';
 import { setCachedUrl, setTombstone, invalidateCachedUrl } from '../cache';
 import { requireAuth } from '../middleware/authenticate';
+import { validateUrl, UrlSafetyError, urlSafetyResponse } from '../security/urlSafety';
 
 /**
  * GET /api/v1/links — the authenticated user's links, newest first, with
@@ -164,6 +165,23 @@ async function handlePatchLink(request: FastifyRequest, reply: FastifyReply): Pr
   if (!link) return reply.code(404).send({ error: 'not_found', message: 'Link not found.' });
   if (link.owner_id !== user.userId) {
     return reply.code(403).send({ error: 'forbidden', message: 'You do not own this link.' });
+  }
+
+  // Re-run URL safety on any new destination: PATCH is a write path too, and it
+  // republishes to the redirect cache below. Without this an owner could create a
+  // benign link, then repoint it at an internal/blocked/malicious host — bypassing
+  // every check the shorten path enforces.
+  if (body.longUrl !== undefined) {
+    try {
+      await validateUrl(body.longUrl, request.log);
+    } catch (err) {
+      if (err instanceof UrlSafetyError) {
+        const { status, body: errBody } = urlSafetyResponse(err);
+        return reply.code(status).send(errBody);
+      }
+      request.log.error({ err }, 'patch link: url safety check errored');
+      return reply.code(500).send({ error: 'internal_error', message: 'Could not validate the URL.' });
+    }
   }
 
   // Partial update: only the provided fields.

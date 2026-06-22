@@ -36,11 +36,57 @@ export class UrlSafetyError extends Error {
   }
 }
 
+// HTTP status per failure code: 400 = bad client input; 422 = a well-formed but
+// disallowed destination (blocked domain / known-malicious).
+const URL_SAFETY_STATUS: Record<UrlSafetyCode, number> = {
+  INVALID_SCHEME: 400,
+  PRIVATE_HOST: 400,
+  UNRESOLVABLE_HOST: 400,
+  SELF_REFERENTIAL: 400,
+  BLOCKED_DOMAIN: 422,
+  MALICIOUS_URL: 422,
+};
+
+// `error` field per code; the two 422s share "unsafe_url" per the API contract.
+const URL_SAFETY_ERROR_FIELD: Record<UrlSafetyCode, string> = {
+  INVALID_SCHEME: 'invalid_url',
+  PRIVATE_HOST: 'blocked_host',
+  UNRESOLVABLE_HOST: 'unresolvable_host',
+  SELF_REFERENTIAL: 'self_referential',
+  BLOCKED_DOMAIN: 'unsafe_url',
+  MALICIOUS_URL: 'unsafe_url',
+};
+
+/**
+ * Framework-agnostic HTTP mapping for a {@link UrlSafetyError}, shared by every
+ * write path (POST /shorten and PATCH /links/:code) so they stay in lockstep.
+ */
+export function urlSafetyResponse(err: UrlSafetyError): {
+  status: number;
+  body: { error: string; message: string };
+} {
+  return {
+    status: URL_SAFETY_STATUS[err.code],
+    body: { error: URL_SAFETY_ERROR_FIELD[err.code], message: err.message },
+  };
+}
+
 /** Minimal logger shape — satisfied by Fastify's `request.log` and `console`. */
 type Logger = { warn: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
 
 const SAFE_BROWSING_TTL = 12 * 60 * 60; // 12 hours, in seconds
 const SAFE_BROWSING_ENDPOINT = 'https://safebrowsing.googleapis.com/v4/threatMatches:find';
+const SAFE_BROWSING_TIMEOUT_MS = 3000; // upstream-hang guard; a timeout fails open
+const DNS_TIMEOUT_MS = 3000; // bound each DNS lookup so a slow resolver can't stall a shorten
+
+/** Reject `p` if it hasn't settled within `ms`. Clears its timer either way. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
 
 /**
  * True if `ip` (a literal IPv4/IPv6 string) is anything other than a normal,
@@ -53,8 +99,22 @@ const SAFE_BROWSING_ENDPOINT = 'https://safebrowsing.googleapis.com/v4/threatMat
 function isBlockedIp(ip: string): boolean {
   if (!ipaddr.isValid(ip)) return true;
   const addr = ipaddr.parse(ip);
-  if (addr instanceof ipaddr.IPv6 && addr.isIPv4MappedAddress()) {
-    return isBlockedIp(addr.toIPv4Address().toString());
+  if (addr instanceof ipaddr.IPv6) {
+    // Unwrap IPv6 forms that embed an IPv4 in their low 32 bits and recurse, so a
+    // private IPv4 cannot be smuggled past the default-deny below:
+    //   ::ffff:a.b.c.d  — IPv4-mapped (::ffff:0:0/96)
+    //   ::a.b.c.d       — deprecated IPv4-compatible (::/96). ipaddr.js reports
+    //                     the compressed hex form (e.g. ::a9fe:a9fe) as plain
+    //                     'unicast', so it MUST be unwrapped explicitly or a
+    //                     loopback/RFC1918/metadata target slips through.
+    if (addr.isIPv4MappedAddress()) {
+      return isBlockedIp(addr.toIPv4Address().toString());
+    }
+    const bytes = addr.toByteArray(); // 16 bytes, network order
+    if (bytes.slice(0, 12).every((b) => b === 0)) {
+      // ::/96 — also covers :: and ::1, whose embedded IPv4 is in 0.0.0.0/8.
+      return isBlockedIp(`${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}`);
+    }
   }
   return addr.range() !== 'unicast';
 }
@@ -96,6 +156,9 @@ async function checkSafeBrowsing(url: string, apiKey: string, log: Logger): Prom
     const res = await fetch(`${SAFE_BROWSING_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      // Bound the call: a hung upstream would otherwise stall the shorten request
+      // (fail-open only covers errors). The AbortError lands in the catch below.
+      signal: AbortSignal.timeout(SAFE_BROWSING_TIMEOUT_MS),
       body: JSON.stringify({
         client: { clientId: 'klip', clientVersion: '1.0' },
         threatInfo: {
@@ -155,9 +218,11 @@ export async function validateUrl(url: string, log: Logger = console): Promise<v
   }
 
   // WHATWG `hostname` keeps IPv6 literals in brackets — strip them so the value
-  // parses as an IP. Lower-cased for hostname comparisons (host is ASCII here:
+  // parses as an IP. Also strip a single trailing FQDN dot, else "klip.to." and
+  // "evil.com." would dodge the self-referential and exact-match blocklist
+  // comparisons below. Lower-cased for hostname comparisons (host is ASCII here:
   // URL has already punycoded any IDN).
-  const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const host = parsed.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
 
   // 2. PRIVATE IP / LOCALHOST BLOCKLIST (literal host) ------------------------
   if (host === 'localhost' || host.endsWith('.localhost')) {
@@ -173,19 +238,18 @@ export async function validateUrl(url: string, log: Logger = console): Promise<v
   // vetted in step 2. Resolving both families and checking EVERY answer is what
   // defends against DNS rebinding (a public name that maps to an internal IP).
   if (!hostIsIpLiteral) {
-    let v4: string[] = [];
-    let v6: string[] = [];
-    try {
-      v4 = await dns.resolve4(host);
-    } catch {
-      /* no A records (or NXDOMAIN) — handled by the combined emptiness check */
-    }
-    try {
-      v6 = await dns.resolve6(host);
-    } catch {
-      /* no AAAA records */
-    }
-    const resolved = [...v4, ...v6];
+    // Resolve both families CONCURRENTLY, each bounded by a timeout, so a slow or
+    // black-holed authoritative server can't stall the shorten request. A lookup
+    // that errors, has no records, or times out contributes nothing; if NOTHING
+    // resolves we fail closed with UNRESOLVABLE_HOST.
+    const [r4, r6] = await Promise.allSettled([
+      withTimeout(dns.resolve4(host), DNS_TIMEOUT_MS, 'resolve4'),
+      withTimeout(dns.resolve6(host), DNS_TIMEOUT_MS, 'resolve6'),
+    ]);
+    const resolved = [
+      ...(r4.status === 'fulfilled' ? r4.value : []),
+      ...(r6.status === 'fulfilled' ? r6.value : []),
+    ];
     if (resolved.length === 0) {
       throw new UrlSafetyError('UNRESOLVABLE_HOST', 'The URL hostname could not be resolved.');
     }

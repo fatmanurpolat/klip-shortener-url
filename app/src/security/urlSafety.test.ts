@@ -42,12 +42,15 @@ const quiet = { warn: () => undefined, error: () => undefined };
 
 function makeFakeRedis(seed: Record<string, string> = {}) {
   const store = new Map<string, string>(Object.entries(seed));
+  const setCalls: unknown[][] = [];
   return {
     store,
+    setCalls,
     async get(key: string) {
       return store.has(key) ? store.get(key)! : null;
     },
-    async set(key: string, value: string | number) {
+    async set(key: string, value: string | number, ...rest: unknown[]) {
+      setCalls.push([key, value, ...rest]);
       store.set(key, String(value));
       return 'OK';
     },
@@ -131,6 +134,13 @@ test('literal private, loopback, link-local and unspecified IPs are PRIVATE_HOST
     'http://[fc00::1]',
     'http://[::]',
     'http://[::ffff:127.0.0.1]', // IPv4-mapped loopback must be unwrapped
+    // IPv4-COMPATIBLE IPv6 (::/96): URL normalizes to compressed hex which
+    // ipaddr.js reports as 'unicast'; must be unwrapped or it bypasses the block.
+    'http://[::127.0.0.1]', // -> ::7f00:1
+    'http://[::169.254.169.254]', // -> ::a9fe:a9fe (cloud metadata)
+    'http://[::10.0.0.1]', // -> ::a00:1
+    'http://[::192.168.1.1]', // -> ::c0a8:101
+    'http://[::172.16.0.1]', // -> ::ac10:1
   ];
   for (const u of hosts) {
     assert.equal(await codeOf(urlSafety.validateUrl(u, quiet)), 'PRIVATE_HOST', u);
@@ -230,4 +240,26 @@ test('a cached MALICIOUS verdict rejects without calling the API', async () => {
     pool: makeFakePool() as unknown as import('pg').Pool,
   });
   assert.equal(await codeOf(urlSafety.validateUrl(url, quiet)), 'MALICIOUS_URL');
+});
+
+test('a fresh Safe Browsing verdict is cached with a 12h EX TTL', async () => {
+  const url = 'https://fresh.example';
+  resolve4Impl = async () => ['93.184.216.34'];
+  fetchImpl = async () => okMatches([]); // clean
+  const redis = makeFakeRedis();
+  db.__setClientsForTest({
+    redis: redis as unknown as import('ioredis').default,
+    pool: makeFakePool() as unknown as import('pg').Pool,
+  });
+  assert.equal(await codeOf(urlSafety.validateUrl(url, quiet)), undefined);
+  const sbSet = redis.setCalls.find((c) => String(c[0]).startsWith('klip:safebrowsing:'));
+  assert.ok(sbSet, 'expected a safebrowsing cache write');
+  assert.deepEqual(sbSet!.slice(1), ['SAFE', 'EX', 43200]); // 12h in seconds
+});
+
+// --- Trailing-dot FQDN normalization ----------------------------------------
+test('a trailing-dot host is normalized (localhost. and short-domain.)', async () => {
+  assert.equal(await codeOf(urlSafety.validateUrl('http://localhost./x', quiet)), 'PRIVATE_HOST');
+  resolve4Impl = async () => ['93.184.216.34']; // reaches step 4
+  assert.equal(await codeOf(urlSafety.validateUrl('https://klip.to./x', quiet)), 'SELF_REFERENTIAL');
 });
