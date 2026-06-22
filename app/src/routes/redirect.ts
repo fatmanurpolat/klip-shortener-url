@@ -1,7 +1,8 @@
 import { FastifyInstance, FastifyReply, FastifyRequest, FastifyBaseLogger } from 'fastify';
 import { getPool, getRedis } from '../db';
 import { env } from '../env';
-import { isWebview, escapeWebview } from '../webview';
+import { detectWebview } from '../webview/detect';
+import { buildAndroidEscapePage } from '../webview/android';
 
 /**
  * GET /:code — resolve a short code to its destination and redirect.
@@ -174,12 +175,21 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   }
 
   const ua = (request.headers['user-agent'] as string) ?? '';
+  const webview = detectWebview(ua);
 
-  // Webview → hand off to escape handler (stub: plain 302 today).
-  if (isWebview(ua)) {
+  // Android in-app browser → serve the Chrome-intent escape page (200 HTML),
+  // not a redirect. Record the click (is_webview) off the hot path.
+  if (webview.isWebview && webview.platform === 'android') {
     enqueueClick(makeClick(code, linkId, ua, request, true), request.log);
-    return escapeWebview(reply, longUrl);
+    const html = buildAndroidEscapePage(longUrl, webview.network ?? 'generic');
+    return reply
+      .code(200)
+      .type('text/html; charset=utf-8')
+      .header('Cache-Control', 'no-store')
+      .send(html);
   }
+  // iOS / other webviews fall through to a normal redirect for now (the iOS
+  // escape is handled in a later phase).
 
   // 301: cacheable, analytics off — no click tracking.
   if (prefer301) {
