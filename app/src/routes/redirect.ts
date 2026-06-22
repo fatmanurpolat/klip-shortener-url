@@ -7,6 +7,7 @@ import { buildIosEscapePage } from '../webview/ios';
 import { enqueueClick } from '../analytics/clickWriter';
 import { hashIp, getCountry } from '../analytics/geoip';
 import { parseUA } from '../analytics/ua';
+import { rateLimit, getClientIp } from '../security/rateLimit';
 
 /**
  * GET /:code — resolve a short code to its destination and redirect.
@@ -80,11 +81,14 @@ function recordClick(
     if (id === null) return;
 
     const ua = parseUA((request.headers['user-agent'] as string) ?? '');
+    // Use the proxy-attested client IP (same source as the rate limiter), not the
+    // spoofable left-most req.ip, so forged X-Forwarded-For can't poison analytics.
+    const clientIp = getClientIp(request);
     enqueueClick({
       linkId: BigInt(id),
       createdAt: new Date(),
-      ipHash: hashIp(request.ip),
-      country: getCountry(request.ip),
+      ipHash: hashIp(clientIp),
+      country: getCountry(clientIp),
       referer: (request.headers.referer as string) ?? '',
       uaBrowser: ua.browser,
       uaOs: ua.os,
@@ -98,14 +102,25 @@ function recordClick(
 async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const { code } = request.params as { code: string };
 
+  // Redis writes below are optimizations; a Redis outage must not take down
+  // redirects (the rate limiter already fails open for this surface). Cache
+  // writes are best-effort and the read degrades to the Postgres path.
+  const cacheWrite = (p: Promise<unknown>): Promise<unknown> =>
+    p.catch((err) => request.log.warn({ err, code }, 'redirect: Redis cache write failed (non-fatal)'));
+
   let longUrl: string;
   let isPrivate = false;
   let prefer301 = false;
   let ownerId: string | null = null;
   let linkId: string | null = null;
 
-  // Hot path: try Redis first.
-  const cached = await getCachedUrl(code);
+  // Hot path: try Redis first; on a Redis read error, fall through to Postgres.
+  let cached: Awaited<ReturnType<typeof getCachedUrl>> = null;
+  try {
+    cached = await getCachedUrl(code);
+  } catch (err) {
+    request.log.warn({ err, code }, 'redirect: Redis read failed — falling back to Postgres');
+  }
   if (cached) {
     if ('tombstone' in cached) {
       return notFound(reply);
@@ -121,7 +136,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
       [code],
     );
     if (lookup.rows.length === 0) {
-      await setTombstone(code, 'NOT_FOUND');
+      await cacheWrite(setTombstone(code, 'NOT_FOUND'));
       return notFound(reply);
     }
 
@@ -133,13 +148,13 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
       [lookup.rows[0].link_id, lookup.rows[0].created_at],
     );
     if (linkRes.rows.length === 0) {
-      await setTombstone(code, 'NOT_FOUND');
+      await cacheWrite(setTombstone(code, 'NOT_FOUND'));
       return notFound(reply);
     }
 
     const row = linkRes.rows[0];
     if (row.expires_at !== null && row.expires_at.getTime() <= Date.now()) {
-      await setTombstone(code, 'EXPIRED');
+      await cacheWrite(setTombstone(code, 'EXPIRED'));
       return notFound(reply);
     }
 
@@ -151,7 +166,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
 
     // Cache only public, analytics-on (302) links as servable URLs.
     if (!isPrivate && !prefer301) {
-      await setCachedUrl(code, longUrl);
+      await cacheWrite(setCachedUrl(code, longUrl));
     }
   }
 
@@ -202,5 +217,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
 }
 
 export async function registerRedirectRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/:code', handleRedirect);
+  // Redirect hot path: 600/min per IP, and FAIL OPEN if Redis is down (a Redis
+  // outage must not take down redirects, which are the product's core function).
+  app.get('/:code', { preHandler: rateLimit('redirect', 600) }, handleRedirect);
 }

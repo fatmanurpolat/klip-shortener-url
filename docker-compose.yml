@@ -32,6 +32,11 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3000}
+      # The app is ALWAYS behind the bundled nginx in this stack, so the real
+      # client IP comes from X-Forwarded-For / X-Real-IP. Default to true (still
+      # overridable) — without it every client collapses to nginx's IP and shares
+      # one rate-limit bucket. Set TRUST_PROXY=false only for direct exposure.
+      TRUST_PROXY: ${TRUST_PROXY:-true}
     expose:
       - "3000"
     depends_on:

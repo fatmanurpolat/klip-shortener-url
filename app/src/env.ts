@@ -14,6 +14,20 @@ const envSchema = z.object({
   HASHIDS_SALT: z.string().min(1, 'HASHIDS_SALT must be set'),
   SHORT_DOMAIN: z.string().min(1).default('klip.to'),
 
+  // Optional: Google Safe Browsing v4 API key. When set, destination URLs are
+  // checked against Safe Browsing at shorten time (cached, fail-open). Unset =
+  // the check is skipped entirely.
+  SAFE_BROWSING_API_KEY: z.string().min(1).optional(),
+
+  // Trust X-Forwarded-For (client IP behind a proxy). Set to "true" ONLY when
+  // Klip runs behind a trusted reverse proxy (e.g. nginx) that sets XFF —
+  // otherwise clients could spoof their IP and dodge per-IP rate limits. Governs
+  // both Fastify's req.ip and the rate limiter's getClientIp.
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
+
   // Secret for signing magic-link and session JWTs. Required (app refuses to
   // start without it). Use a long, random string in every environment.
   SESSION_SECRET: z.string().min(16, 'SESSION_SECRET must be set (>= 16 chars)'),
