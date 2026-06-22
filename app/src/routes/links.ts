@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { getPool } from '../db';
+import { getPool, getRedis } from '../db';
 import { env } from '../env';
 import { requireAuth } from '../middleware/authenticate';
 
@@ -115,6 +115,168 @@ async function handleListLinks(request: FastifyRequest, reply: FastifyReply): Pr
   return reply.code(200).send({ links, nextCursor });
 }
 
+// -----------------------------------------------------------------------------
+// Edit / delete
+// -----------------------------------------------------------------------------
+
+const patchSchema = z.object({
+  longUrl: z.string().url().max(2048).optional(),
+  expiresAt: z.string().datetime().nullable().optional(), // null = remove expiry
+  private: z.boolean().optional(),
+  analytics: z.boolean().optional(), // maps to prefer_301 = !analytics
+});
+
+interface OwnedLink {
+  id: string;
+  created_at: Date;
+  owner_id: string | null;
+  long_url: string;
+  expires_at: Date | null;
+  is_private: boolean;
+  prefer_301: boolean;
+}
+
+/** Resolve a link (partition-pruned join). Null if it doesn't exist. */
+async function resolveLink(code: string): Promise<OwnedLink | null> {
+  const res = await getPool().query<OwnedLink>(
+    `SELECT l.id, l.created_at, l.owner_id, l.long_url, l.expires_at, l.is_private, l.prefer_301
+       FROM links_code_lookup lcl
+       JOIN links l ON l.id = lcl.link_id AND l.created_at = lcl.created_at
+      WHERE lcl.short_code = $1`,
+    [code],
+  );
+  return res.rows[0] ?? null;
+}
+
+const cacheKey = (code: string): string => `klip:url:${code}`;
+
+async function handlePatchLink(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const user = request.user;
+  if (!user) return reply.code(401).send({ error: 'auth_required' });
+
+  const { code } = request.params as { code: string };
+  const parsed = patchSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'validation_error', message: parsed.error.issues[0]?.message ?? 'Invalid body.' });
+  }
+  const body = parsed.data;
+
+  const link = await resolveLink(code);
+  if (!link) return reply.code(404).send({ error: 'not_found', message: 'Link not found.' });
+  if (link.owner_id !== user.userId) {
+    return reply.code(403).send({ error: 'forbidden', message: 'You do not own this link.' });
+  }
+
+  // Partial update: only the provided fields.
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (body.longUrl !== undefined) {
+    params.push(body.longUrl);
+    sets.push(`long_url = $${params.length}`);
+  }
+  if (body.expiresAt !== undefined) {
+    params.push(body.expiresAt); // string or null
+    sets.push(`expires_at = $${params.length}`);
+  }
+  if (body.private !== undefined) {
+    params.push(body.private);
+    sets.push(`is_private = $${params.length}`);
+  }
+  if (body.analytics !== undefined) {
+    params.push(!body.analytics);
+    sets.push(`prefer_301 = $${params.length}`);
+  }
+  if (sets.length === 0) {
+    return reply.code(400).send({ error: 'validation_error', message: 'No updatable fields provided.' });
+  }
+
+  params.push(link.id);
+  const idP = params.length;
+  params.push(link.created_at);
+  const createdP = params.length;
+  await getPool().query(
+    `UPDATE links SET ${sets.join(', ')} WHERE id = $${idP} AND created_at = $${createdP}`,
+    params,
+  );
+
+  // New state after the update.
+  const newLongUrl = body.longUrl ?? link.long_url;
+  const newExpiresAt =
+    body.expiresAt !== undefined
+      ? body.expiresAt === null
+        ? null
+        : new Date(body.expiresAt)
+      : link.expires_at;
+  const newPrivate = body.private ?? link.is_private;
+  const newPrefer301 = body.analytics !== undefined ? !body.analytics : link.prefer_301;
+
+  // Cache invalidation. Only public, non-301, non-expired links may be cached
+  // as a servable URL; anything else gets a short DELETED tombstone so the old
+  // cached URL stops being served immediately.
+  const key = cacheKey(code);
+  const redis = getRedis();
+  const expired = newExpiresAt !== null && newExpiresAt.getTime() <= Date.now();
+  if (!newPrivate && !newPrefer301 && !expired) {
+    // Still a public 302 link → cache the (possibly new) URL.
+    await redis.set(key, JSON.stringify({ u: newLongUrl, id: link.id }), 'EX', env.REDIS_URL_TTL);
+  } else if (newPrivate || expired) {
+    // Privatized or expired → hard tombstone so the old URL stops serving now.
+    await redis.del(key);
+    await redis.set(key, 'DELETED', 'EX', 60);
+  } else {
+    // Now a 301 link (analytics off) but still valid → just drop it from cache;
+    // the redirect resolves it from the DB as a 301 (a tombstone would 404 it).
+    await redis.del(key);
+  }
+
+  return reply.code(200).send({
+    code,
+    shortUrl: `https://${env.SHORT_DOMAIN}/${code}`,
+    longUrl: newLongUrl,
+    createdAt: link.created_at.toISOString(),
+    expiresAt: newExpiresAt ? newExpiresAt.toISOString() : null,
+    private: newPrivate,
+    analytics: !newPrefer301,
+  });
+}
+
+async function handleDeleteLink(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const user = request.user;
+  if (!user) return reply.code(401).send({ error: 'auth_required' });
+
+  const { code } = request.params as { code: string };
+
+  const link = await resolveLink(code);
+  if (!link) return reply.code(404).send({ error: 'not_found', message: 'Link not found.' });
+  if (link.owner_id !== user.userId) {
+    return reply.code(403).send({ error: 'forbidden', message: 'You do not own this link.' });
+  }
+
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM links_code_lookup WHERE short_code = $1', [code]);
+    await client.query('DELETE FROM links WHERE id = $1 AND created_at = $2', [link.id, link.created_at]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Tombstone so GET /:code 404s immediately (not after the URL TTL expires).
+  const key = cacheKey(code);
+  const redis = getRedis();
+  await redis.del(key);
+  await redis.set(key, 'DELETED', 'EX', 60);
+
+  return reply.code(204).send();
+}
+
 export async function registerLinksRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/v1/links', { preHandler: requireAuth }, handleListLinks);
+  app.patch('/api/v1/links/:code', { preHandler: requireAuth }, handlePatchLink);
+  app.delete('/api/v1/links/:code', { preHandler: requireAuth }, handleDeleteLink);
 }
