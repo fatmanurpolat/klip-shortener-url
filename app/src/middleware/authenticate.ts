@@ -7,25 +7,19 @@ declare module 'fastify' {
   }
 }
 
-/** Extract a session token from the Authorization header or the cookie. */
+/**
+ * Extract a session token from the Authorization header or the session cookie.
+ * Cookies are parsed by @fastify/cookie (registered before this hook), so we
+ * read the already-parsed request.cookies rather than the raw header.
+ */
 function extractToken(request: FastifyRequest): string | null {
   const header = request.headers.authorization;
   if (header && header.startsWith('Bearer ')) {
     return header.slice('Bearer '.length).trim();
   }
 
-  const cookie = request.headers.cookie;
-  if (cookie) {
-    for (const part of cookie.split(';')) {
-      const idx = part.indexOf('=');
-      if (idx === -1) continue;
-      const name = part.slice(0, idx).trim();
-      if (name === SESSION_COOKIE) {
-        return decodeURIComponent(part.slice(idx + 1).trim());
-      }
-    }
-  }
-  return null;
+  const cookieToken = request.cookies?.[SESSION_COOKIE];
+  return cookieToken ? cookieToken : null;
 }
 
 /**

@@ -35,19 +35,17 @@ const isProd = env.NODE_ENV === 'production';
 // time doesn't reveal whether an email exists (anti-enumeration). Computed once.
 const dummyHashPromise = hashPassword(randomBytes(18).toString('hex'));
 
-/** Build the Set-Cookie value for the session cookie (or a cleared one). */
-function sessionCookie(value: string, maxAgeSeconds: number): string {
-  const parts = [
-    `${SESSION_COOKIE}=${value}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    `Max-Age=${maxAgeSeconds}`,
-  ];
-  // Secure cookies aren't sent over plain http, so only set it in production.
-  if (isProd) parts.push('Secure');
-  return parts.join('; ');
-}
+// Session cookie attributes (shared by every path that signs a user in). Set via
+// @fastify/cookie's reply.setCookie. `secure` is on only in production because a
+// Secure cookie isn't sent over plain http (local dev). HttpOnly keeps it out of
+// JS; SameSite=Lax blocks it on cross-site POSTs while allowing top-level nav.
+const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: SESSION_MAX_AGE_SECONDS, // 60 * 60 * 24 * 30 = 30 days, in seconds
+};
 
 /** Find an existing user by email or create one. Atomic upsert (email is unique). */
 async function findOrCreateUser(email: string): Promise<{ id: string; email: string }> {
@@ -97,7 +95,7 @@ async function handleVerify(request: FastifyRequest, reply: FastifyReply): Promi
   }
 
   const token = signSessionToken(user);
-  reply.header('Set-Cookie', sessionCookie(token, SESSION_MAX_AGE_SECONDS));
+  reply.setCookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
   return reply.code(200).send({ token, userId: user.userId });
 }
 
@@ -131,7 +129,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
 
   const user = { userId: res.rows[0].id, email: res.rows[0].email };
   const token = signSessionToken(user);
-  reply.header('Set-Cookie', sessionCookie(token, SESSION_MAX_AGE_SECONDS));
+  reply.setCookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
   return reply.code(201).send({ userId: user.userId, email: user.email });
 }
 
@@ -160,13 +158,13 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
 
   const user = { userId: row.id, email: row.email };
   const token = signSessionToken(user);
-  reply.header('Set-Cookie', sessionCookie(token, SESSION_MAX_AGE_SECONDS));
+  reply.setCookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
   return reply.code(200).send({ userId: user.userId, email: user.email });
 }
 
 async function handleLogout(_request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   // Clear the cookie by setting an empty value with Max-Age 0.
-  reply.header('Set-Cookie', sessionCookie('', 0));
+  reply.clearCookie(SESSION_COOKIE, { path: '/' });
   return reply.code(200).send({ ok: true });
 }
 

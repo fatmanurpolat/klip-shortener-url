@@ -5,6 +5,18 @@ import { initCounter } from './counter';
 async function main(): Promise<void> {
   const app = await buildApp();
 
+  // Startup config guard. The HARD requirements — HASHIDS_SALT >= 20 and
+  // SESSION_SECRET >= 32 chars — are enforced declaratively in env.ts, which
+  // exits(1) before we reach here. This is the one SOFT check that can't live in
+  // the env schema (the app connects via DATABASE_URL, not POSTGRES_PASSWORD):
+  // shout if the Postgres password is still the compose placeholder in prod.
+  if (env.NODE_ENV === 'production' && process.env.POSTGRES_PASSWORD === 'CHANGE_ME') {
+    app.log.warn(
+      'INSECURE CONFIG: POSTGRES_PASSWORD is still "CHANGE_ME" in production — ' +
+        'set a strong, unique password in .env and rotate the database credential now.',
+    );
+  }
+
   // Seed/recover the ID counter before we accept any traffic.
   try {
     await initCounter();

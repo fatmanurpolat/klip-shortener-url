@@ -11,7 +11,7 @@ const envSchema = z.object({
 
   COUNTER_BACKEND: z.enum(['redis', 'postgres']).default('redis'),
   COUNTER_OFFSET: z.coerce.number().int().nonnegative().default(14776336),
-  HASHIDS_SALT: z.string().min(1, 'HASHIDS_SALT must be set'),
+  HASHIDS_SALT: z.string().min(20, 'HASHIDS_SALT must be at least 20 characters'),
   SHORT_DOMAIN: z.string().min(1).default('klipo.to'),
 
   // Optional: Google Safe Browsing v4 API key. When set, destination URLs are
@@ -30,7 +30,7 @@ const envSchema = z.object({
 
   // Secret for signing magic-link and session JWTs. Required (app refuses to
   // start without it). Use a long, random string in every environment.
-  SESSION_SECRET: z.string().min(16, 'SESSION_SECRET must be set (>= 16 chars)'),
+  SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
 
   RAW_CLICK_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(90),
   LINK_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(120),
