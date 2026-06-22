@@ -1,4 +1,4 @@
-# Klip
+# Klipo
 
 A self-hostable URL shortener with webview escaping. TypeScript + Fastify, fronted by
 nginx, backed by Postgres and Redis. Everything runs via Docker Compose.
@@ -51,4 +51,4 @@ npm run dev            # tsx watch, reads ../.env via dotenv
 Port `443` is published by the `nginx` service. Drop `fullchain.pem` / `privkey.pem` into
 `nginx/certs/` and enable the commented `server { listen 443 ssl; ... }` block in
 `nginx/nginx.conf`.
-# klip-shortener-url
+# klipo-shortener-url

@@ -29,7 +29,7 @@ export function Settings() {
 
   return (
     <div className="kd-page" style={{ maxWidth: 920 }}>
-      <div className="klip-eyebrow" style={{ marginBottom: 6 }}>Account</div>
+      <div className="klipo-eyebrow" style={{ marginBottom: 6 }}>Account</div>
       <h1 style={{ fontSize: "var(--text-3xl)", marginBottom: 4 }}>Settings</h1>
 
       {/* Profile */}

@@ -40,7 +40,7 @@ export function HowItWorks() {
         <div className="lp-how-grid">
           {/* Sticky header */}
           <div className="lp-how-header">
-            <div className="klip-eyebrow" style={{ color: "var(--lavender-600)", marginBottom: "var(--space-3)" }}>
+            <div className="klipo-eyebrow" style={{ color: "var(--lavender-600)", marginBottom: "var(--space-3)" }}>
               The Klipo escape
             </div>
             <h2 className="lp-h2" style={{ marginBottom: "var(--space-4)" }}>

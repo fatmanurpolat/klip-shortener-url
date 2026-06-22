@@ -64,7 +64,7 @@ export function Login() {
 
         {status !== "sent" ? (
           <>
-            <div className="klip-eyebrow" style={{ marginBottom: 12 }}>Welcome back</div>
+            <div className="klipo-eyebrow" style={{ marginBottom: 12 }}>Welcome back</div>
             <h1 style={{ fontSize: "var(--text-3xl)", marginBottom: 12 }}>Sign in to Klipo</h1>
             <p style={{ color: "var(--text-muted)", fontSize: "var(--text-md)", marginBottom: 32, maxWidth: 380 }}>
               No passwords here. Pop in your email and we&apos;ll send a magic link that drops you straight into your links.

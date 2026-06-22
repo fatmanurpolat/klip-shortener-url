@@ -1,5 +1,5 @@
 -- =============================================================================
--- Klip — database schema
+-- Klipo — database schema
 -- Runs once on first Postgres boot via /docker-entrypoint-initdb.d, and is also
 -- safe to apply by hand to an existing database.
 --

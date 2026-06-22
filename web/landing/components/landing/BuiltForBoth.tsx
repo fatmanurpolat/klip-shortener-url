@@ -31,7 +31,7 @@ export function BuiltForBoth() {
   return (
     <Section background="app" id="credibility" aria-labelledby="both-h">
       <div style={{ textAlign: "center", marginBottom: "var(--space-10)" }}>
-        <div className="klip-eyebrow" style={{ marginBottom: "var(--space-3)" }}>Made for both hands on the link</div>
+        <div className="klipo-eyebrow" style={{ marginBottom: "var(--space-3)" }}>Made for both hands on the link</div>
         <h2 id="both-h" className="lp-h2">
           For creators{" "}
           <em style={{ fontStyle: "italic", fontWeight: 500, color: "var(--rose-600)" }}>and</em>{" "}

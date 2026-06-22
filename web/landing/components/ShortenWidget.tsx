@@ -68,7 +68,7 @@ export function ShortenWidget() {
       }}
     >
       {status === "done" && result ? (
-        <div role="status" aria-live="polite" style={{ animation: "klipPop 240ms var(--ease-spring)" }}>
+        <div role="status" aria-live="polite" style={{ animation: "klipoPop 240ms var(--ease-spring)" }}>
           <div
             style={{
               background: "var(--rose-50)",

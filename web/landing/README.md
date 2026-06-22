@@ -4,10 +4,10 @@ The public marketing + shorten page for Klipo, built with **Next.js 15 (App Rout
 configured for **static export** so it can be served as plain files by the same nginx box that
 fronts the API.
 
-It implements the **Klip Design System** (imported from the team's `claude.ai/design` project):
+It implements the **Klipo Design System** (imported from the team's `claude.ai/design` project):
 the soft floral watercolor palette (rose / lavender / periwinkle / cream / plum), Playfair Display +
 Inter + Space Mono + Geist Mono type, and the signature petal gradient. The hero's shorten widget and
-the closing magic-link form are wired to the **real** Klip API.
+the closing magic-link form are wired to the **real** Klipo API.
 
 ## Stack
 
@@ -87,5 +87,5 @@ components/
                    Sparkline, AnalyticsTeaser, BuiltForBoth, CopyButton, FinalCta, Footer,
                    Reveal, CountUp
 lib/
-  api.ts           typed Klip API client (shorten + requestLogin) with on-brand errors
+  api.ts           typed Klipo API client (shorten + requestLogin) with on-brand errors
 ```

@@ -1,5 +1,5 @@
 /**
- * Klip API client (browser-side).
+ * Klipo API client (browser-side).
  *
  * Base URL resolves from NEXT_PUBLIC_API_BASE. In production behind nginx the
  * landing page and API share an origin, so the default ("") yields same-origin
@@ -65,7 +65,7 @@ export async function shorten(body: ShortenRequest): Promise<ShortenResult> {
       }),
     });
   } catch {
-    throw new ShortenError(0, "network_error", "Could not reach Klip. Check your connection and try again.");
+    throw new ShortenError(0, "network_error", "Could not reach Klipo. Check your connection and try again.");
   }
 
   const data = (await res.json().catch(() => ({}))) as Partial<ShortenResult & ApiError>;
@@ -149,7 +149,7 @@ function friendlyError(status: number, code?: string): string {
       return "That's already a Klipo link — paste the original long URL.";
     default:
       return status >= 500
-        ? "Klip hit a snag on our end. Please try again in a moment."
+        ? "Klipo hit a snag on our end. Please try again in a moment."
         : `Request failed (HTTP ${status}).`;
   }
 }

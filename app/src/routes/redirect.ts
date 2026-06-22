@@ -25,7 +25,7 @@ import { rateLimit, getClientIp } from '../security/rateLimit';
 const NOT_FOUND_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Link not found — Klip</title>
+<title>Link not found — Klipo</title>
 <style>
   body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;
        background:linear-gradient(135deg,#fffafc,#fdf2fb 45%,#eef3ff);color:#5b4a6b}
@@ -35,7 +35,7 @@ const NOT_FOUND_HTML = `<!doctype html>
   p{opacity:.8}
 </style></head>
 <body><div class="box"><h1>🌷</h1><h2>Link not found or expired</h2>
-<p>This Klip doesn't exist anymore.</p></div></body></html>`;
+<p>This Klipo doesn't exist anymore.</p></div></body></html>`;
 
 interface LinkRow {
   id: string;

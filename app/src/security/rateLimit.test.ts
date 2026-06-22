@@ -4,7 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 
 // Env must be set before env.ts (imported transitively) loads.
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL ??= 'postgres://klip:test@localhost:5432/klip';
+process.env.DATABASE_URL ??= 'postgres://klipo:test@localhost:5432/klip';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 process.env.HASHIDS_SALT ??= 'test-salt-0123456789-abcdef';
 process.env.SESSION_SECRET ??= 'test-session-secret-0123456789-abcdef';
@@ -98,19 +98,19 @@ test('getClientIp ignores proxy headers unless TRUST_PROXY; then uses the attest
 test('getLimitKey: shorten keys by IP when anon, by user when authenticated', () => {
   assert.equal(
     rl.getLimitKey(makeReq({ ip: '203.0.113.5', user: null }), 'shorten'),
-    'klip:rl:shorten:anon:203.0.113.5',
+    'klipo:rl:shorten:anon:203.0.113.5',
   );
   assert.equal(
     rl.getLimitKey(makeReq({ user: { userId: 'user-1' } }), 'shorten'),
-    'klip:rl:shorten:user:user-1',
+    'klipo:rl:shorten:user:user-1',
   );
 });
 
 test('getLimitKey: auth and auth-verify share one per-IP key; redirect is its own', () => {
   const req = makeReq({ ip: '203.0.113.9' });
-  assert.equal(rl.getLimitKey(req, 'auth'), 'klip:rl:auth:203.0.113.9');
-  assert.equal(rl.getLimitKey(req, 'auth-verify'), 'klip:rl:auth:203.0.113.9');
-  assert.equal(rl.getLimitKey(req, 'redirect'), 'klip:rl:redirect:203.0.113.9');
+  assert.equal(rl.getLimitKey(req, 'auth'), 'klipo:rl:auth:203.0.113.9');
+  assert.equal(rl.getLimitKey(req, 'auth-verify'), 'klipo:rl:auth:203.0.113.9');
+  assert.equal(rl.getLimitKey(req, 'redirect'), 'klipo:rl:redirect:203.0.113.9');
 });
 
 // --- rateLimit preHandler: allow / deny --------------------------------------
@@ -144,12 +144,12 @@ test('shorten selects the authed limit (120) and user key; anon uses 10', async 
   await rl.rateLimit('shorten', 10, 120)(makeReq({ user: { userId: 'u9' } }), authed.reply);
   assert.equal(authed.state.headers['X-RateLimit-Limit'], '120');
   assert.equal(authed.state.headers['X-RateLimit-Remaining'], '119');
-  assert.ok(redis.counts.has('klip:rl:shorten:user:u9'));
+  assert.ok(redis.counts.has('klipo:rl:shorten:user:u9'));
 
   const anon = makeReply();
   await rl.rateLimit('shorten', 10, 120)(makeReq({ ip: '203.0.113.77', user: null }), anon.reply);
   assert.equal(anon.state.headers['X-RateLimit-Limit'], '10');
-  assert.ok(redis.counts.has('klip:rl:shorten:anon:203.0.113.77'));
+  assert.ok(redis.counts.has('klipo:rl:shorten:anon:203.0.113.77'));
 });
 
 // --- fail strategy -----------------------------------------------------------
@@ -187,13 +187,13 @@ test('IPv6 clients are bucketed to a /64 so a prefix cannot be rotated for new k
   const other = key('2001:db8:1:3::5'); // different /64
   assert.equal(a, b, 'addresses in one /64 must share a bucket');
   assert.notEqual(a, other, 'different /64s must not share a bucket');
-  assert.ok(a.startsWith('klip:rl:redirect:') && a.endsWith('/64'), `unexpected key: ${a}`);
+  assert.ok(a.startsWith('klipo:rl:redirect:') && a.endsWith('/64'), `unexpected key: ${a}`);
 });
 
 test('IPv4 clients are keyed by exact address', () => {
   env.TRUST_PROXY = true;
   const req = makeReq({ headers: { 'x-real-ip': '203.0.113.42' } });
-  assert.equal(rl.getLimitKey(req, 'redirect'), 'klip:rl:redirect:203.0.113.42');
+  assert.equal(rl.getLimitKey(req, 'redirect'), 'klipo:rl:redirect:203.0.113.42');
 });
 
 test('a non-IP proxy header is rejected and falls back to req.ip', () => {

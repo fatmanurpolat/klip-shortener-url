@@ -56,6 +56,6 @@ async function securityHeadersPlugin(app: FastifyInstance): Promise<void> {
 // fastify-plugin so the onSend hook is registered on the ROOT instance (not an
 // encapsulated child), making it apply to every route in the app.
 export const securityHeaders = fp(securityHeadersPlugin, {
-  name: 'klip-security-headers',
+  name: 'klipo-security-headers',
   fastify: '5.x',
 });

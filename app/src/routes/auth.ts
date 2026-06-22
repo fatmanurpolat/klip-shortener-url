@@ -170,7 +170,7 @@ async function handleLogout(_request: FastifyRequest, reply: FastifyReply): Prom
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // Per-IP limits: request-login 5/min (stricter — it triggers an email),
-  // verify 10/min. Both share the klip:rl:auth:{ip} key (combined auth budget).
+  // verify 10/min. Both share the klipo:rl:auth:{ip} key (combined auth budget).
   app.post('/api/v1/auth/request-login', { preHandler: rateLimit('auth', 5) }, handleRequestLogin);
   app.get('/api/v1/auth/verify', { preHandler: rateLimit('auth-verify', 10) }, handleVerify);
   // Email + password paths. register 5/min (account creation), login 10/min —

@@ -20,7 +20,7 @@ import { getPool, getRedis } from './db';
 export const COUNTER_OFFSET: bigint = BigInt(env.COUNTER_OFFSET);
 
 /** Redis key holding the last issued ID. */
-const COUNTER_KEY = 'klip:counter';
+const COUNTER_KEY = 'klipo:counter';
 
 function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -50,7 +50,7 @@ export async function getNextId(): Promise<bigint> {
       return BigInt(next);
     } catch (err) {
       throw new Error(
-        `Klip counter: INCR "${COUNTER_KEY}" failed — Redis unavailable at ${env.REDIS_URL}. ` +
+        `Klipo counter: INCR "${COUNTER_KEY}" failed — Redis unavailable at ${env.REDIS_URL}. ` +
           `Cause: ${describe(err)}`,
       );
     }
@@ -64,7 +64,7 @@ export async function getNextId(): Promise<bigint> {
     return BigInt(res.rows[0].nextval);
   } catch (err) {
     throw new Error(
-      `Klip counter: nextval('link_id_seq') failed — Postgres unavailable at ${env.DATABASE_URL} ` +
+      `Klipo counter: nextval('link_id_seq') failed — Postgres unavailable at ${env.DATABASE_URL} ` +
         `or the sequence is missing (run db/init/001_schema.sql). Cause: ${describe(err)}`,
     );
   }
@@ -81,7 +81,7 @@ async function initRedisCounter(): Promise<void> {
     await redis.set(COUNTER_KEY, COUNTER_OFFSET.toString(), 'NX');
   } catch (err) {
     throw new Error(
-      `Klip counter: failed to seed "${COUNTER_KEY}" — Redis unavailable at ${env.REDIS_URL}. ` +
+      `Klipo counter: failed to seed "${COUNTER_KEY}" — Redis unavailable at ${env.REDIS_URL}. ` +
         `Cause: ${describe(err)}`,
     );
   }
@@ -97,7 +97,7 @@ async function initRedisCounter(): Promise<void> {
     maxPersisted = raw != null ? BigInt(raw) : null;
   } catch (err) {
     throw new Error(
-      `Klip counter: recovery query against links_code_lookup failed — Postgres unavailable ` +
+      `Klipo counter: recovery query against links_code_lookup failed — Postgres unavailable ` +
         `at ${env.DATABASE_URL}. Cause: ${describe(err)}`,
     );
   }
@@ -126,7 +126,7 @@ async function initPostgresCounter(): Promise<void> {
     }
   } catch (err) {
     throw new Error(
-      `Klip counter: cannot initialize Postgres backend — Postgres unavailable at ` +
+      `Klipo counter: cannot initialize Postgres backend — Postgres unavailable at ` +
         `${env.DATABASE_URL} or schema not applied. Cause: ${describe(err)}`,
     );
   }

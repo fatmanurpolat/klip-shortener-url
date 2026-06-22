@@ -1,7 +1,7 @@
 # Klipo — dashboard
 
 The creator dashboard for Klipo, built with **Vite + React 18 + TypeScript**. It implements the
-**Klip Design System** ("Klipo" brand) and is wired to the **real** Klip backend: magic-link auth,
+**Klipo Design System** ("Klipo" brand) and is wired to the **real** Klipo backend: magic-link auth,
 the links list, per-link analytics (including the signature **Webview vs Real Browser** breakdown),
 link creation, and deletion.
 
@@ -73,7 +73,7 @@ src/
   main.tsx            entry — AuthProvider + ToastProvider + App
   App.tsx             view orchestration (auth gate, screen switch, modal)
   auth/AuthContext    magic-link session (probe + verify), email for the shell
-  lib/api.ts          typed Klip API client + derived helpers (status, relative time)
+  lib/api.ts          typed Klipo API client + derived helpers (status, relative time)
   screens/            Login, AppShell, Dashboard, LinkStats, Settings, CreateLinkModal
   components/         Toast, Sparkline
   components/ui/      Button, IconButton, Card, Badge, Avatar, Logo, Input, Switch, Select, Icon

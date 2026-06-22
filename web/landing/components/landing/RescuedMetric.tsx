@@ -14,7 +14,7 @@ export function RescuedMetric() {
       <div className="lp-rescued-grid">
         {/* Left — the claim + giant numeral */}
         <div>
-          <div className="klip-eyebrow" style={{ color: "rgba(255,255,255,0.85)", marginBottom: "var(--space-3)" }}>
+          <div className="klipo-eyebrow" style={{ color: "rgba(255,255,255,0.85)", marginBottom: "var(--space-3)" }}>
             The metric only Klipo has
           </div>
           <h2 id="rescued-h" className="lp-h2" style={{ color: "var(--text-on-accent)", marginBottom: "var(--space-4)" }}>

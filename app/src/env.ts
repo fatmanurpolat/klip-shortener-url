@@ -20,7 +20,7 @@ const envSchema = z.object({
   SAFE_BROWSING_API_KEY: z.string().min(1).optional(),
 
   // Trust X-Forwarded-For (client IP behind a proxy). Set to "true" ONLY when
-  // Klip runs behind a trusted reverse proxy (e.g. nginx) that sets XFF —
+  // Klipo runs behind a trusted reverse proxy (e.g. nginx) that sets XFF —
   // otherwise clients could spoof their IP and dodge per-IP rate limits. Governs
   // both Fastify's req.ip and the rate limiter's getClientIp.
   TRUST_PROXY: z

@@ -54,7 +54,7 @@ export function Section({
 /** Uppercase lavender eyebrow label used above section headings. */
 export function Eyebrow({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
-    <div className="klip-eyebrow" style={style}>
+    <div className="klipo-eyebrow" style={style}>
       {children}
     </div>
   );

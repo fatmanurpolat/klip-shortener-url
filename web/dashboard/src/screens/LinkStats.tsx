@@ -297,13 +297,13 @@ function StatsSkeleton() {
       <div className="kd-stat-tiles">
         {[0, 1, 2].map((i) => (
           <Card key={i} tone="default" padding="md" style={{ flex: 1 }}>
-            <div className="klip-skeleton" style={{ height: 14, width: "55%", marginBottom: 12 }} />
-            <div className="klip-skeleton" style={{ height: 26, width: "40%" }} />
+            <div className="klipo-skeleton" style={{ height: 14, width: "55%", marginBottom: 12 }} />
+            <div className="klipo-skeleton" style={{ height: 26, width: "40%" }} />
           </Card>
         ))}
       </div>
       <Card tone="default" padding="lg" style={{ marginTop: 16 }}>
-        <div className="klip-skeleton" style={{ height: 200, width: "100%", borderRadius: "var(--radius-md)" }} />
+        <div className="klipo-skeleton" style={{ height: 200, width: "100%", borderRadius: "var(--radius-md)" }} />
       </Card>
     </div>
   );

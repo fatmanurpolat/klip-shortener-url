@@ -138,7 +138,7 @@ async function checkDomainBlocklist(host: string): Promise<void> {
  */
 async function checkSafeBrowsing(url: string, apiKey: string, log: Logger): Promise<void> {
   const redis = getRedis();
-  const cacheKey = `klip:safebrowsing:${createHash('sha256').update(url).digest('hex')}`;
+  const cacheKey = `klipo:safebrowsing:${createHash('sha256').update(url).digest('hex')}`;
 
   // Cache first. A Redis read failure is non-fatal — fall through to the API.
   let cached: string | null = null;
@@ -160,7 +160,7 @@ async function checkSafeBrowsing(url: string, apiKey: string, log: Logger): Prom
       // (fail-open only covers errors). The AbortError lands in the catch below.
       signal: AbortSignal.timeout(SAFE_BROWSING_TIMEOUT_MS),
       body: JSON.stringify({
-        client: { clientId: 'klip', clientVersion: '1.0' },
+        client: { clientId: 'klipo', clientVersion: '1.0' },
         threatInfo: {
           threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'],
           platformTypes: ['ANY_PLATFORM'],

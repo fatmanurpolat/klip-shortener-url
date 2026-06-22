@@ -1,5 +1,5 @@
 /* =============================================================================
- * Klipo Design System — token foundation (ported from the Klip Design System).
+ * Klipo Design System — token foundation (ported from the Klipo Design System).
  * Soft floral watercolor palette: rose, lavender, periwinkle, cream, deep plum.
  * Font families are wired to next/font CSS variables set in layout.tsx.
  * ========================================================================== */
@@ -263,7 +263,7 @@ a { color: var(--text-link); text-decoration: none; }
 button { font-family: inherit; }
 
 /* Decorative eyebrow label */
-.klip-eyebrow {
+.klipo-eyebrow {
   font-family: var(--font-body);
   font-size: var(--text-xs);
   font-weight: var(--fw-semibold);
@@ -273,7 +273,7 @@ button { font-family: inherit; }
 }
 
 /* Watercolor bloom backdrop helper */
-.klip-bloom-bg {
+.klipo-bloom-bg {
   background-color: var(--surface-app);
   background-image: var(--wash-bloom);
 }
@@ -291,24 +291,24 @@ a:focus-visible,
 }
 
 /* ================= BRAND ANIMATIONS ================= */
-@keyframes klipFade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes klipPop {
+@keyframes klipoFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes klipoPop {
   from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to   { opacity: 1; transform: none; }
 }
-@keyframes klipRise {
+@keyframes klipoRise {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: none; }
 }
-@keyframes klipBounceUp {
+@keyframes klipoBounceUp {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-9px); }
 }
-@keyframes klipFloat {
+@keyframes klipoFloat {
   0%, 100% { transform: translateY(0) rotate(-2deg); }
   50%      { transform: translateY(-10px) rotate(2deg); }
 }
-@keyframes klipDrift {
+@keyframes klipoDrift {
   0%   { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
   10%  { opacity: 0.7; }
   100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
