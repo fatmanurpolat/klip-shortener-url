@@ -155,6 +155,8 @@
   </style>
 </head>
 <body>
+  <header id="auth-corner" class="auth-corner"></header>
+
   <div class="petal">🌸</div>
   <div class="petal">🌷</div>
   <div class="petal">🌸</div>
@@ -204,6 +206,88 @@
     }
     #klip-submit[disabled] { opacity: 0.6; cursor: progress; }
   </style>
+
+  <style>
+    .auth-corner {
+      position: fixed;
+      top: 1.1rem;
+      right: 1.3rem;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: 'Quicksand', system-ui, -apple-system, sans-serif;
+    }
+    .auth-email {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--violet);
+      background: rgba(255, 255, 255, 0.6);
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+    }
+    .auth-btn {
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 999px;
+      padding: 0.5rem 1.25rem;
+      border: none;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s;
+    }
+    .auth-btn:hover { transform: translateY(-1px); }
+    .auth-btn:active { transform: translateY(0); }
+    .auth-btn.login {
+      color: var(--violet);
+      background: rgba(255, 255, 255, 0.72);
+      border: 1.5px solid rgba(157, 123, 255, 0.4);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .auth-btn.login:hover { box-shadow: 0 6px 16px rgba(157, 123, 255, 0.25); }
+    .auth-btn.logout {
+      color: white;
+      background: linear-gradient(100deg, var(--rose), var(--violet));
+      box-shadow: 0 6px 16px rgba(157, 123, 255, 0.3);
+    }
+    .auth-btn.logout:hover { box-shadow: 0 10px 22px rgba(157, 123, 255, 0.4); }
+  </style>
+
+  <script>
+    (function () {
+      // Auth state — hardcoded placeholder for now. Flip to true to preview the
+      // logged-in corner; wire to the real session (klip_session) later.
+      var isLoggedIn = false;
+      var userEmail = 'user@example.com';
+
+      var corner = document.getElementById('auth-corner');
+
+      function renderAuth() {
+        if (isLoggedIn) {
+          corner.innerHTML =
+            '<span class="auth-email"></span>' +
+            '<button type="button" class="auth-btn logout" id="logout-btn">Logout</button>';
+          // Set email via textContent to avoid HTML injection.
+          corner.querySelector('.auth-email').textContent = userEmail;
+          document.getElementById('logout-btn').addEventListener('click', function () {
+            console.log('Logout clicked');
+            // Clear placeholder session state and re-render.
+            isLoggedIn = false;
+            renderAuth();
+          });
+        } else {
+          corner.innerHTML =
+            '<button type="button" class="auth-btn login" id="login-btn">Login</button>';
+          // Login flow (magic-link request) to be wired up next.
+        }
+      }
+
+      renderAuth();
+    })();
+  </script>
 
   <script>
     (function () {

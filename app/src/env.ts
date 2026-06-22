@@ -14,6 +14,10 @@ const envSchema = z.object({
   HASHIDS_SALT: z.string().min(1, 'HASHIDS_SALT must be set'),
   SHORT_DOMAIN: z.string().min(1).default('klip.to'),
 
+  // Secret for signing magic-link and session JWTs. Required (app refuses to
+  // start without it). Use a long, random string in every environment.
+  SESSION_SECRET: z.string().min(16, 'SESSION_SECRET must be set (>= 16 chars)'),
+
   RAW_CLICK_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(90),
   LINK_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(120),
 });

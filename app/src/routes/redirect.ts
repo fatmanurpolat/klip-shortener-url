@@ -55,9 +55,9 @@ interface ClickEvent {
   isWebview: boolean;
 }
 
-/** Owner of the request, or null (set by a future auth preHandler). */
+/** Owner of the request, or null (populated by the global authenticate hook). */
 function getOwnerId(request: FastifyRequest): string | null {
-  return (request as FastifyRequest & { userId?: string | null }).userId ?? null;
+  return request.user?.userId ?? null;
 }
 
 function notFound(reply: FastifyReply): FastifyReply {

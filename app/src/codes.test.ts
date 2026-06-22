@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 // Env must be set before codes.ts loads (it reads HASHIDS_SALT at import time).
 process.env.HASHIDS_SALT ??= 'test-salt-please-change-me';
 process.env.COUNTER_OFFSET ??= '14776336';
+process.env.SESSION_SECRET ??= 'test-session-secret-0123456789';
 
 let codes: typeof import('./codes.js');
 

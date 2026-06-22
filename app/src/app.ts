@@ -8,6 +8,8 @@ import { getPool, getRedis, closeDb } from './db';
 import { registerHealthRoutes } from './routes/health';
 import { registerShortenRoutes } from './routes/shorten';
 import { registerRedirectRoutes } from './routes/redirect';
+import { registerAuthRoutes } from './routes/auth';
+import { registerAuthHook } from './middleware/authenticate';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -44,11 +46,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   // request origin; tighten to an allowlist before exposing publicly.
   await app.register(cors, {
     origin: true,
-    methods: ['GET', 'POST'],
+    credentials: true, // allow the session cookie cross-origin in dev
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   await app.register(formbody);
+
+  // Populate request.user from a session token on every request (optional auth).
+  // Protected routes additionally use the `requireAuth` preHandler.
+  registerAuthHook(app);
+
   await registerHealthRoutes(app);
+  await registerAuthRoutes(app);
   await registerShortenRoutes(app);
   await registerRedirectRoutes(app); // parametric /:code — register last
 
