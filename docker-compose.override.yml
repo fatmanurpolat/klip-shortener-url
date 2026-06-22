@@ -3,6 +3,15 @@
 # DBeaver can connect. Do NOT use this on a public server — delete it or keep
 # it out of your production deploy.
 services:
+  nginx:
+    # Local dev runs HTTP-only (no TLS certs needed): point /etc/nginx/conf.d at
+    # the HTTP-only config instead of the production TLS klip.conf. Same target as
+    # the base conf.d mount, so this entry overrides it (merged by target path).
+    # nginx is reachable on the base's host :80 mapping; the base :443 mapping is
+    # inert locally (the HTTP-only conf doesn't listen on 443).
+    volumes:
+      - ./nginx/conf.d.local:/etc/nginx/conf.d:ro
+
   postgres:
     ports:
       - "5432:5432"

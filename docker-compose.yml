@@ -9,6 +9,12 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Server config — loaded via nginx.conf's `include /etc/nginx/conf.d/*.conf`.
+      # This is the PRODUCTION TLS config (klip.conf). For local dev,
+      # docker-compose.override.yml shadows this same target with an HTTP-only config.
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # TLS certs the :443 block needs in production — provide them on the host:
+      # - ./nginx/certs:/etc/nginx/certs:ro
       - ./web:/usr/share/nginx/html:ro
       - nginx_cache:/var/cache/nginx
     depends_on:
