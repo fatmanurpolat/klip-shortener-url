@@ -1,0 +1,213 @@
+/* =============================================================================
+ * Klipo Design System — token foundation (ported from the Klip Design System).
+ * Fonts load via the Google Fonts CDN <link> in index.html.
+ * ========================================================================== */
+
+:root {
+  /* ---- Rose (primary) ---- */
+  --rose-50:  #FDF1F4;
+  --rose-100: #FBE0E8;
+  --rose-200: #F6C2D2;
+  --rose-300: #EF9DB5;
+  --rose-400: #E47E9C;
+  --rose-500: #D85F84;
+  --rose-600: #C24A6F;
+  --rose-700: #9F3A5A;
+
+  /* ---- Lavender (secondary) ---- */
+  --lavender-50:  #F6F2FB;
+  --lavender-100: #ECE3F7;
+  --lavender-200: #DBCAEF;
+  --lavender-300: #C3A9E2;
+  --lavender-400: #AB8AD6;
+  --lavender-500: #9269C6;
+  --lavender-600: #7A52AC;
+  --lavender-700: #5F3F87;
+
+  /* ---- Periwinkle (accent — the rescued metric) ---- */
+  --peri-50:  #F1F3FC;
+  --peri-100: #E2E7F8;
+  --peri-200: #C7D0F1;
+  --peri-300: #A6B3E8;
+  --peri-400: #8595DC;
+  --peri-500: #6678CE;
+  --peri-600: #4F61B4;
+  --peri-700: #3E4D8E;
+
+  /* ---- Cream / warm neutrals ---- */
+  --cream-50:  #FEFBF7;
+  --cream-100: #FDF6EE;
+  --cream-200: #F7ECDF;
+  --cream-300: #EFE0CF;
+
+  /* ---- Plum (text + deep neutrals) ---- */
+  --plum-900: #2E1A2A;
+  --plum-800: #43293C;
+  --plum-700: #5E4257;
+  --plum-500: #8A7082;
+  --plum-300: #B9A7B2;
+
+  /* ---- Semantic accent hues (soft watercolor) ---- */
+  --sage-100: #E4F1E9;
+  --sage-500: #5FA985;
+  --sage-700: #3F7E61;
+
+  --honey-100: #FBEEDA;
+  --honey-500: #DBA152;
+  --honey-700: #B27C32;
+
+  --blush-100: #FBE3E1;
+  --blush-500: #D87A74;
+  --blush-700: #B0524C;
+
+  /* ---- Pure ---- */
+  --white: #FFFFFF;
+  --black: #1B0F18;
+
+  /* ================= SEMANTIC ALIASES ================= */
+  --surface-app:       var(--cream-100);
+  --surface-app-top:   var(--cream-50);
+  --surface-card:      var(--white);
+  --surface-sunken:    var(--cream-200);
+  --surface-overlay:   rgba(46, 26, 42, 0.42);
+  --surface-glass:     rgba(255, 255, 255, 0.72);
+
+  --text-heading:      var(--plum-800);
+  --text-body:         var(--plum-700);
+  /* Muted/faint darkened from plum-500/300 so small secondary copy clears
+   * WCAG AA (~6.4:1 and ~4.9:1 on cream-100). plum-500/300 stay available as
+   * fills for dots/icons where contrast rules don't apply. */
+  --text-muted:        #6B5165;
+  --text-faint:        #7E6378;
+
+  /* Named create-action accent (the kit dresses "New link" in lavender) — a
+   * documented role alias instead of ad-hoc inline overrides. */
+  --brand-create:      var(--lavender-400);
+  --glow-create:       var(--glow-lavender);
+  --text-on-primary:   var(--white);
+  --text-on-accent:    var(--white);
+  --text-link:         var(--rose-600);
+
+  --brand-primary:     var(--rose-500);
+  --brand-primary-hov: var(--rose-600);
+  --brand-secondary:   var(--lavender-500);
+  --brand-accent:      var(--peri-500);
+
+  --border-soft:       var(--cream-300);
+  --border-default:    #EAD9E2;
+  --border-strong:     #DBC2CF;
+  --border-focus:      var(--rose-400);
+
+  --status-live-bg:    var(--sage-100);
+  --status-live-fg:    var(--sage-700);
+  --status-warn-bg:    var(--honey-100);
+  --status-warn-fg:    var(--honey-700);
+  --status-expired-bg: var(--blush-100);
+  --status-expired-fg: var(--blush-700);
+  --status-info-bg:    var(--peri-100);
+  --status-info-fg:    var(--peri-700);
+
+  --wash-bloom:   radial-gradient(120% 120% at 0% 0%, var(--rose-100) 0%, transparent 55%),
+                  radial-gradient(120% 120% at 100% 0%, var(--lavender-100) 0%, transparent 50%),
+                  radial-gradient(140% 120% at 80% 100%, var(--peri-100) 0%, transparent 55%);
+  /* Opening stop darkened to rose-600 so white text on the petal clears WCAG AA. */
+  --wash-petal:   linear-gradient(135deg, var(--rose-600) 0%, var(--lavender-500) 55%, var(--peri-500) 100%);
+  --wash-cream:   linear-gradient(180deg, var(--cream-50) 0%, var(--cream-100) 100%);
+
+  /* ================= TYPOGRAPHY ================= */
+  --font-display: "Playfair Display", "Iowan Old Style", Georgia, serif;
+  --font-body:    "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono:    "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-number:  "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-display: 600;
+  --fw-display-bold: 700;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 25px;
+  --text-2xl: 32px;
+  --text-3xl: 42px;
+  --text-4xl: 56px;
+  --text-5xl: 72px;
+
+  --lh-tight: 1.08;
+  --lh-snug: 1.25;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.65;
+
+  --ls-tight: -0.02em;
+  --ls-snug: -0.01em;
+  --ls-normal: 0;
+  --ls-wide: 0.04em;
+  --ls-caps: 0.12em;
+
+  /* ================= SPACING / SIZING ================= */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
+  --radius-pill: 999px;
+
+  --width-content: 1180px;
+  --width-prose: 640px;
+  --width-sidebar: 256px;
+
+  --control-sm: 34px;
+  --control-md: 42px;
+  --control-lg: 52px;
+
+  --z-base: 1;
+  --z-sticky: 100;
+  --z-overlay: 1000;
+  --z-modal: 1100;
+  --z-toast: 1200;
+
+  /* ================= EFFECTS ================= */
+  --shadow-xs: 0 1px 2px rgba(67, 41, 60, 0.06);
+  --shadow-sm: 0 2px 8px rgba(67, 41, 60, 0.07);
+  --shadow-md: 0 8px 24px rgba(67, 41, 60, 0.09);
+  --shadow-lg: 0 18px 48px rgba(67, 41, 60, 0.12);
+  --shadow-xl: 0 32px 72px rgba(67, 41, 60, 0.16);
+
+  --glow-rose: 0 8px 28px rgba(216, 95, 132, 0.30);
+  --glow-lavender: 0 8px 28px rgba(146, 105, 198, 0.26);
+  --glow-peri: 0 8px 28px rgba(102, 120, 206, 0.26);
+
+  --focus-ring: 0 0 0 3px rgba(216, 95, 132, 0.28);
+  --focus-ring-light: 0 0 0 3px rgba(255, 255, 255, 0.75);
+  --inset-soft: inset 0 1px 2px rgba(67, 41, 60, 0.05);
+
+  --blur-glass: 16px;
+  --blur-overlay: 6px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 360ms;
+}

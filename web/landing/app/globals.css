@@ -1,0 +1,324 @@
+/* =============================================================================
+ * Klipo Design System — token foundation (ported from the Klip Design System).
+ * Soft floral watercolor palette: rose, lavender, periwinkle, cream, deep plum.
+ * Font families are wired to next/font CSS variables set in layout.tsx.
+ * ========================================================================== */
+
+:root {
+  /* ---- Rose (primary) ---- */
+  --rose-50:  #FDF1F4;
+  --rose-100: #FBE0E8;
+  --rose-200: #F6C2D2;
+  --rose-300: #EF9DB5;
+  --rose-400: #E47E9C;
+  --rose-500: #D85F84;  /* primary brand */
+  --rose-600: #C24A6F;
+  --rose-700: #9F3A5A;
+
+  /* ---- Lavender (secondary) ---- */
+  --lavender-50:  #F6F2FB;
+  --lavender-100: #ECE3F7;
+  --lavender-200: #DBCAEF;
+  --lavender-300: #C3A9E2;
+  --lavender-400: #AB8AD6;
+  --lavender-500: #9269C6;
+  --lavender-600: #7A52AC;
+  --lavender-700: #5F3F87;
+
+  /* ---- Periwinkle (accent) ---- */
+  --peri-50:  #F1F3FC;
+  --peri-100: #E2E7F8;
+  --peri-200: #C7D0F1;
+  --peri-300: #A6B3E8;
+  --peri-400: #8595DC;
+  --peri-500: #6678CE;
+  --peri-600: #4F61B4;
+  --peri-700: #3E4D8E;
+
+  /* ---- Cream / warm neutrals ---- */
+  --cream-50:  #FEFBF7;  /* app background top */
+  --cream-100: #FDF6EE;  /* app background */
+  --cream-200: #F7ECDF;  /* sunken / muted surface */
+  --cream-300: #EFE0CF;  /* hairline on cream */
+
+  /* ---- Plum (text + deep neutrals) ---- */
+  --plum-900: #2E1A2A;
+  --plum-800: #43293C;  /* headings */
+  --plum-700: #5E4257;  /* body */
+  --plum-500: #8A7082;  /* muted text */
+  --plum-300: #B9A7B2;  /* faint / placeholder */
+
+  /* ---- Semantic accent hues (soft, watercolor) ---- */
+  --sage-100: #E4F1E9;
+  --sage-500: #5FA985;  /* success / live */
+  --sage-700: #3F7E61;
+
+  --honey-100: #FBEEDA;
+  --honey-500: #DBA152;  /* warning / expiring */
+  --honey-700: #B27C32;
+
+  --blush-100: #FBE3E1;
+  --blush-500: #D87A74;  /* danger / expired */
+  --blush-700: #B0524C;
+
+  /* ---- Pure ---- */
+  --white: #FFFFFF;
+  --black: #1B0F18;
+
+  /* ================= SEMANTIC ALIASES ================= */
+
+  /* Surfaces */
+  --surface-app:       var(--cream-100);
+  --surface-app-top:   var(--cream-50);
+  --surface-card:      var(--white);
+  --surface-sunken:    var(--cream-200);
+  --surface-overlay:   rgba(46, 26, 42, 0.42);
+  --surface-glass:     rgba(255, 255, 255, 0.72);
+
+  /* Text */
+  --text-heading:      var(--plum-800);
+  --text-body:         var(--plum-700);
+  --text-muted:        var(--plum-500);
+  --text-faint:        var(--plum-300);
+  --text-on-primary:   var(--white);
+  --text-on-accent:    var(--white);
+  --text-link:         var(--rose-600);
+
+  /* Brand roles */
+  --brand-primary:     var(--rose-500);
+  --brand-primary-hov: var(--rose-600);
+  --brand-secondary:   var(--lavender-500);
+  --brand-accent:      var(--peri-500);
+
+  /* Borders & lines */
+  --border-soft:       var(--cream-300);
+  --border-default:    #EAD9E2;
+  --border-strong:     #DBC2CF;
+  --border-focus:      var(--rose-400);
+
+  /* Status */
+  --status-live-bg:    var(--sage-100);
+  --status-live-fg:    var(--sage-700);
+  --status-warn-bg:    var(--honey-100);
+  --status-warn-fg:    var(--honey-700);
+  --status-expired-bg: var(--blush-100);
+  --status-expired-fg: var(--blush-700);
+  --status-info-bg:    var(--peri-100);
+  --status-info-fg:    var(--peri-700);
+
+  /* Watercolor wash gradients (decorative backgrounds) */
+  --wash-bloom:   radial-gradient(120% 120% at 0% 0%, var(--rose-100) 0%, transparent 55%),
+                  radial-gradient(120% 120% at 100% 0%, var(--lavender-100) 0%, transparent 50%),
+                  radial-gradient(140% 120% at 80% 100%, var(--peri-100) 0%, transparent 55%);
+  /* Opening stop is rose-600 (not rose-400) so white normal-size text over the
+   * rose end of the band clears WCAG AA (4.66:1). Still the soft petal sweep. */
+  --wash-petal:   linear-gradient(135deg, var(--rose-600) 0%, var(--lavender-500) 55%, var(--peri-500) 100%);
+  /* Light focus ring for controls on dark/petal surfaces (rose ring is too faint there). */
+  --focus-ring-light: 0 0 0 3px rgba(255, 255, 255, 0.75);
+  --wash-cream:   linear-gradient(180deg, var(--cream-50) 0%, var(--cream-100) 100%);
+
+  /* ================= TYPOGRAPHY ================= */
+  /* Families — `--font-*-src` are injected by next/font in layout.tsx. */
+  --font-display: var(--font-display-src), "Iowan Old Style", Georgia, serif;
+  --font-body:    var(--font-body-src), -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono:    var(--font-mono-src), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-number:  var(--font-number-src), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Weights */
+  --fw-regular:   400;
+  --fw-medium:    500;
+  --fw-semibold:  600;
+  --fw-bold:      700;
+  --fw-display:   600;
+  --fw-display-bold: 700;
+
+  /* Type scale */
+  --text-xs:   12px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   17px;
+  --text-lg:   20px;
+  --text-xl:   25px;
+  --text-2xl:  32px;
+  --text-3xl:  42px;
+  --text-4xl:  56px;
+  --text-5xl:  72px;
+
+  /* Line heights */
+  --lh-tight:   1.08;
+  --lh-snug:    1.25;
+  --lh-normal:  1.5;
+  --lh-relaxed: 1.65;
+
+  /* Letter spacing */
+  --ls-tight:   -0.02em;
+  --ls-snug:    -0.01em;
+  --ls-normal:  0;
+  --ls-wide:    0.04em;
+  --ls-caps:    0.12em;
+
+  /* ================= SPACING / SIZING ================= */
+  --space-0:   0;
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+  --space-16:  64px;
+  --space-20:  80px;
+  --space-24:  96px;
+
+  /* Radii — soft, rounded petals */
+  --radius-xs:   6px;
+  --radius-sm:   10px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+  --radius-2xl:  36px;
+  --radius-pill: 999px;
+
+  /* Container widths */
+  --width-content: 1180px;
+  --width-prose:   640px;
+  --width-sidebar: 256px;
+
+  /* Control heights */
+  --control-sm: 34px;
+  --control-md: 42px;
+  --control-lg: 52px;
+
+  /* Z-index */
+  --z-base:    1;
+  --z-sticky:  100;
+  --z-overlay: 1000;
+  --z-modal:   1100;
+  --z-toast:   1200;
+
+  /* ================= EFFECTS ================= */
+  /* Shadows — warm plum-tinted, soft and low */
+  --shadow-xs:  0 1px 2px rgba(67, 41, 60, 0.06);
+  --shadow-sm:  0 2px 8px rgba(67, 41, 60, 0.07);
+  --shadow-md:  0 8px 24px rgba(67, 41, 60, 0.09);
+  --shadow-lg:  0 18px 48px rgba(67, 41, 60, 0.12);
+  --shadow-xl:  0 32px 72px rgba(67, 41, 60, 0.16);
+
+  /* Colored glows */
+  --glow-rose:     0 8px 28px rgba(216, 95, 132, 0.30);
+  --glow-lavender: 0 8px 28px rgba(146, 105, 198, 0.26);
+  --glow-peri:     0 8px 28px rgba(102, 120, 206, 0.26);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 3px rgba(216, 95, 132, 0.28);
+
+  /* Inset (sunken inputs) */
+  --inset-soft: inset 0 1px 2px rgba(67, 41, 60, 0.05);
+
+  /* Blur */
+  --blur-glass: 16px;
+  --blur-overlay: 6px;
+
+  /* Transitions */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast:   140ms;
+  --dur-base:   220ms;
+  --dur-slow:   360ms;
+}
+
+/* ================= BASE ELEMENT STYLES ================= */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { padding: 0; margin: 0; }
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--lh-normal);
+  color: var(--text-body);
+  background: var(--surface-app);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  color: var(--text-heading);
+  font-weight: var(--fw-display);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  margin: 0;
+  text-wrap: balance;
+}
+
+p { text-wrap: pretty; }
+
+a { color: var(--text-link); text-decoration: none; }
+
+button { font-family: inherit; }
+
+/* Decorative eyebrow label */
+.klip-eyebrow {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--brand-secondary);
+}
+
+/* Watercolor bloom backdrop helper */
+.klip-bloom-bg {
+  background-color: var(--surface-app);
+  background-image: var(--wash-bloom);
+}
+
+::selection { background: var(--rose-200); color: var(--plum-900); }
+
+/* Keyboard focus ring — visible only for keyboard users (:focus-visible), so
+ * pointer presses keep the existing scale/brightness feedback without a ring.
+ * Dark/petal surfaces opt into the light ring variant (see landing.css). */
+button:focus-visible,
+a:focus-visible,
+[role="switch"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ================= BRAND ANIMATIONS ================= */
+@keyframes klipFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes klipPop {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes klipRise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes klipBounceUp {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-9px); }
+}
+@keyframes klipFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-10px) rotate(2deg); }
+}
+@keyframes klipDrift {
+  0%   { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
+  10%  { opacity: 0.7; }
+  100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -218,7 +218,7 @@ export async function validateUrl(url: string, log: Logger = console): Promise<v
   }
 
   // WHATWG `hostname` keeps IPv6 literals in brackets — strip them so the value
-  // parses as an IP. Also strip a single trailing FQDN dot, else "klip.to." and
+  // parses as an IP. Also strip a single trailing FQDN dot, else "klipo.to." and
   // "evil.com." would dodge the self-referential and exact-match blocklist
   // comparisons below. Lower-cased for hostname comparisons (host is ASCII here:
   // URL has already punycoded any IDN).

@@ -12,7 +12,7 @@ const envSchema = z.object({
   COUNTER_BACKEND: z.enum(['redis', 'postgres']).default('redis'),
   COUNTER_OFFSET: z.coerce.number().int().nonnegative().default(14776336),
   HASHIDS_SALT: z.string().min(1, 'HASHIDS_SALT must be set'),
-  SHORT_DOMAIN: z.string().min(1).default('klip.to'),
+  SHORT_DOMAIN: z.string().min(1).default('klipo.to'),
 
   // Optional: Google Safe Browsing v4 API key. When set, destination URLs are
   // checked against Safe Browsing at shorten time (cached, fail-open). Unset =

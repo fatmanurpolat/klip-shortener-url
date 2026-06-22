@@ -1,0 +1,179 @@
+/* =============================================================================
+ * Klipo landing page — layout + responsive rules.
+ * Cosmetic/token styling lives inline on components; this file owns the things
+ * inline styles can't do: media queries, fluid type, hover states, keyframes.
+ * Breakpoints: 980px (hero/major two-col), 900px (how/rescued/analytics),
+ * 768px (credibility + footer), 640px (fine tightening).
+ * ========================================================================== */
+
+/* ---- Skip link ---- */
+.lp-skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: var(--z-toast);
+  background: var(--white);
+  color: var(--text-link);
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-weight: 600;
+}
+.lp-skip:focus { left: 12px; top: 12px; }
+
+/* ---- Fluid type roles ---- */
+.lp-h1 { font-size: clamp(2rem, 5.4vw, 3.5rem); line-height: 1.04; }
+.lp-h2 { font-size: clamp(1.55rem, 3.4vw, 2.625rem); line-height: 1.08; }
+.lp-numeral-giant { font-size: clamp(3.25rem, 9vw, 5.5rem); line-height: 0.95; }
+
+/* ---- Navbar ---- */
+.lp-nav {
+  position: fixed; inset: 0 0 auto 0; height: 64px;
+  z-index: var(--z-sticky);
+  display: flex; align-items: center;
+  background: transparent; border-bottom: 1px solid transparent;
+  transition: background var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out);
+}
+.lp-nav.scrolled {
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-xs);
+}
+.lp-nav-inner {
+  width: 100%; max-width: var(--width-content); margin-inline: auto;
+  padding-inline: var(--space-6);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-6);
+}
+.lp-nav-links { display: flex; align-items: center; gap: var(--space-6); }
+.lp-nav-link {
+  font-size: var(--text-sm); font-weight: 600; color: var(--text-body);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.lp-nav-link:hover { color: var(--rose-600); }
+.lp-nav-ctas { display: flex; align-items: center; gap: var(--space-2); }
+@media (max-width: 860px) { .lp-nav-links { display: none; } }
+@media (max-width: 560px) { .lp-nav-signin { display: none; } }
+
+/* ---- Hero ---- */
+.lp-hero { position: relative; padding-top: 112px; padding-bottom: var(--space-20); overflow: hidden; }
+.lp-hero-grid {
+  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: var(--space-16);
+  align-items: center;
+}
+.lp-hero-bullets { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+@media (max-width: 980px) {
+  .lp-hero { padding-top: 96px; }
+  .lp-hero-grid { grid-template-columns: 1fr; gap: var(--space-10); }
+}
+
+/* ---- Generic reveal-on-hover lift for link rows etc. ---- */
+.lp-linkish { color: inherit; transition: color var(--dur-fast) var(--ease-out); }
+
+/* ---- How it works ---- */
+.lp-how-grid {
+  display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: var(--space-12);
+  align-items: start;
+}
+.lp-how-header { position: sticky; top: 96px; }
+.lp-step-chip {
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted);
+  background: var(--surface-sunken); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm); padding: 6px 10px; display: inline-block;
+  max-width: 100%; overflow-x: auto; white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .lp-how-grid { grid-template-columns: 1fr; gap: var(--space-8); }
+  .lp-how-header { position: static; }
+}
+
+/* ---- Rescued metric ---- */
+.lp-rescued-grid {
+  display: grid; grid-template-columns: 0.9fr 1.1fr; gap: var(--space-12);
+  align-items: center;
+}
+@media (max-width: 900px) {
+  .lp-rescued-grid { grid-template-columns: 1fr; gap: var(--space-8); }
+}
+
+/* ---- Analytics teaser ---- */
+.lp-analytics-grid {
+  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: var(--space-12);
+  align-items: center;
+}
+.lp-analytics-preview { transform: rotate(-2deg); transition: transform var(--dur-slow) var(--ease-out); }
+.lp-analytics-preview:hover { transform: rotate(0deg); }
+.lp-analytics-bullets { display: grid; gap: var(--space-4); }
+@media (max-width: 900px) {
+  .lp-analytics-grid { grid-template-columns: 1fr; gap: var(--space-8); }
+  .lp-analytics-preview { transform: none; }
+  /* `order` only affects DIRECT grid children — these classes live on the grid's
+   * own children (the Reveal wrapper and the copy column), so the decorative
+   * preview drops BELOW the heading/value-prop on mobile. */
+  .lp-analytics-preview-col { order: 2; }
+  .lp-analytics-copy { order: 1; }
+}
+
+/* ---- Built for both ---- */
+.lp-both-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
+.lp-code {
+  font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.7;
+  overflow-x: auto; white-space: pre; margin: 0;
+}
+.lp-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+@media (max-width: 768px) { .lp-both-grid { grid-template-columns: 1fr; } }
+
+/* ---- Final CTA ---- */
+.lp-cta-row { display: flex; gap: var(--space-3); align-items: flex-start; }
+.lp-cta-row > :first-child { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 560px) {
+  .lp-cta-row { flex-direction: column; }
+  .lp-cta-row > * { width: 100%; }
+}
+
+/* ---- Footer ---- */
+.lp-footer-grid {
+  display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: var(--space-8);
+}
+.lp-footer-link {
+  display: block; color: rgba(255,255,255,0.7); font-size: var(--text-sm);
+  padding: 4px 0; transition: color var(--dur-fast) var(--ease-out);
+}
+.lp-footer-link:hover { color: var(--peri-300); }
+.lp-footer-bottom {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  flex-wrap: wrap;
+}
+@media (max-width: 860px) { .lp-footer-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .lp-footer-grid { grid-template-columns: 1fr; } }
+
+/* ---- Dark/petal-surface focus rings (light variant, higher contrast) ---- */
+#cta button:focus-visible,
+#cta a:focus-visible,
+#rescued button:focus-visible,
+#rescued a:focus-visible,
+.lp-footer-link:focus-visible,
+footer a:focus-visible,
+footer button:focus-visible {
+  box-shadow: var(--focus-ring-light);
+}
+
+/* ---- Small responsive utilities ---- */
+@media (max-width: 640px) {
+  .lp-hide-sm { display: none !important; }
+  /* Recover vertical space so the hero shorten widget stays above the fold on
+   * short phones (e.g. iPhone SE 375x667): smaller intro + tighter top pad. */
+  .lp-hero { padding-top: 84px; }
+  .lp-hero-intro { font-size: var(--text-base); line-height: var(--lh-snug); margin-bottom: var(--space-5); }
+}
+
+/* ---- Traveling dot on the how-it-works rule ---- */
+@keyframes lpTravel {
+  0% { top: 0; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
