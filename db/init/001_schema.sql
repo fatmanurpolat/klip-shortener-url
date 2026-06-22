@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS clicks (
     ua_browser  TEXT,
     ua_os       TEXT,
     ua_device   TEXT,                                         -- desktop | mobile | tablet | bot
+    ua_network  TEXT,                                         -- webview network (instagram, …); null if not a webview
     is_webview  BOOLEAN      NOT NULL DEFAULT FALSE,
     PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);
