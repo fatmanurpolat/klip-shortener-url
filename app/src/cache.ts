@@ -6,7 +6,7 @@ import { env } from './env';
  * is answered from Redis with no SQL. (Rate limiting lives in security/rateLimit.ts.)
  *
  * Key schema:
- *   klip:url:{code}  → long_url string (TTL = REDIS_URL_TTL), OR a tombstone.
+ *   klipo:url:{code}  → long_url string (TTL = REDIS_URL_TTL), OR a tombstone.
  * Tombstones (negative cache, TTL = 60s): "EXPIRED" | "DELETED" | "NOT_FOUND".
  */
 
@@ -15,7 +15,7 @@ export type Tombstone = 'EXPIRED' | 'DELETED' | 'NOT_FOUND';
 const TOMBSTONES = new Set<string>(['EXPIRED', 'DELETED', 'NOT_FOUND']);
 const TOMBSTONE_TTL = 60; // seconds
 
-const urlKey = (code: string): string => `klip:url:${code}`;
+const urlKey = (code: string): string => `klipo:url:${code}`;
 
 export type CachedUrl = { url: string } | { tombstone: Tombstone } | null;
 

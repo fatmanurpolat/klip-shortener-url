@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 process.env.NODE_ENV = 'test';
 process.env.SHORT_DOMAIN = 'klipo.to';
 process.env.SAFE_BROWSING_API_KEY = 'test-key';
-process.env.DATABASE_URL ??= 'postgres://klip:test@localhost:5432/klip';
+process.env.DATABASE_URL ??= 'postgres://klipo:test@localhost:5432/klip';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 
 process.env.HASHIDS_SALT ??= 'test-salt-0123456789-abcdef';
@@ -82,7 +82,7 @@ async function codeOf(p: Promise<void>): Promise<string | undefined> {
 }
 
 const sbKey = (url: string): string =>
-  `klip:safebrowsing:${createHash('sha256').update(url).digest('hex')}`;
+  `klipo:safebrowsing:${createHash('sha256').update(url).digest('hex')}`;
 
 let db: typeof import('../db.js');
 let urlSafety: typeof import('./urlSafety.js');
@@ -253,7 +253,7 @@ test('a fresh Safe Browsing verdict is cached with a 12h EX TTL', async () => {
     pool: makeFakePool() as unknown as import('pg').Pool,
   });
   assert.equal(await codeOf(urlSafety.validateUrl(url, quiet)), undefined);
-  const sbSet = redis.setCalls.find((c) => String(c[0]).startsWith('klip:safebrowsing:'));
+  const sbSet = redis.setCalls.find((c) => String(c[0]).startsWith('klipo:safebrowsing:'));
   assert.ok(sbSet, 'expected a safebrowsing cache write');
   assert.deepEqual(sbSet!.slice(1), ['SAFE', 'EX', 43200]); // 12h in seconds
 });

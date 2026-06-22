@@ -4,7 +4,7 @@ import { getRedis } from '../db';
 import { env } from '../env';
 
 /**
- * Production rate limiting for Klip's key API surfaces.
+ * Production rate limiting for Klipo's key API surfaces.
  *
  * Each surface is a fixed-window counter in Redis (INCR + EXPIRE), evaluated
  * ATOMICALLY in a single Lua script so concurrent requests can't race past the
@@ -116,19 +116,19 @@ function ipBucket(ip: string): string {
 export function getLimitKey(req: FastifyRequest, surface: string): string {
   if (surface === 'shorten') {
     const userId = req.user?.userId;
-    if (userId) return `klip:rl:shorten:user:${userId}`;
+    if (userId) return `klipo:rl:shorten:user:${userId}`;
   }
   const ip = ipBucket(getClientIp(req));
   switch (surface) {
     case 'shorten':
-      return `klip:rl:shorten:anon:${ip}`;
+      return `klipo:rl:shorten:anon:${ip}`;
     case 'auth':
     case 'auth-verify':
-      return `klip:rl:auth:${ip}`;
+      return `klipo:rl:auth:${ip}`;
     case 'redirect':
-      return `klip:rl:redirect:${ip}`;
+      return `klipo:rl:redirect:${ip}`;
     default:
-      return `klip:rl:${surface}:${ip}`;
+      return `klipo:rl:${surface}:${ip}`;
   }
 }
 

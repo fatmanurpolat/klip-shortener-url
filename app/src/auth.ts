@@ -16,7 +16,7 @@ const ALG: Algorithm = 'HS256';
 const MAGIC_LINK_TTL: SignOptions['expiresIn'] = '15m';
 const SESSION_TTL: SignOptions['expiresIn'] = '30d';
 
-export const SESSION_COOKIE = 'klip_session';
+export const SESSION_COOKIE = 'klipo_session';
 export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 export interface SessionUser {

@@ -27,7 +27,7 @@ export const COUNTER_OFFSET: bigint = BigInt(
 const salt = process.env.HASHIDS_SALT;
 if (!salt) {
   throw new Error(
-    'Klip codes: HASHIDS_SALT is not set. Refusing to generate short codes ' +
+    'Klipo codes: HASHIDS_SALT is not set. Refusing to generate short codes ' +
       'without a salt — set HASHIDS_SALT to a long, random, secret string.',
   );
 }

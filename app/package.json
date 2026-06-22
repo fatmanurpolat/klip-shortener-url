@@ -1,8 +1,8 @@
 {
-  "name": "klip-app",
+  "name": "klipo-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Klip — self-hostable URL shortener with webview escaping",
+  "description": "Klipo — self-hostable URL shortener with webview escaping",
   "license": "MIT",
   "main": "dist/index.js",
   "engines": {

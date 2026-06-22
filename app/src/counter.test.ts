@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 process.env.NODE_ENV = 'test';
 process.env.COUNTER_BACKEND = 'redis';
 process.env.COUNTER_OFFSET = '14776336';
-process.env.DATABASE_URL ??= 'postgres://klip:test@localhost:5432/klip';
+process.env.DATABASE_URL ??= 'postgres://klipo:test@localhost:5432/klip';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 process.env.HASHIDS_SALT ??= 'test-salt-0123456789-abcdef';
 process.env.SESSION_SECRET ??= 'test-session-secret-0123456789-abcdef';
