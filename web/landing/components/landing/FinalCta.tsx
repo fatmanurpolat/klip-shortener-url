@@ -31,7 +31,7 @@ export function FinalCta() {
 
   return (
     <Section background="petal" id="cta" width="var(--width-prose)" style={{ color: "var(--text-on-primary)", textAlign: "center" }} aria-labelledby="cta-h">
-      <div className="klip-eyebrow" style={{ color: "rgba(255,255,255,0.85)", marginBottom: "var(--space-3)" }}>
+      <div className="klipo-eyebrow" style={{ color: "rgba(255,255,255,0.85)", marginBottom: "var(--space-3)" }}>
         Stop losing clicks to webviews
       </div>
       <h2 id="cta-h" className="lp-h2" style={{ color: "var(--text-on-accent)", marginBottom: "var(--space-4)" }}>
@@ -56,7 +56,7 @@ export function FinalCta() {
         }}
       >
         {status === "sent" ? (
-          <div role="status" aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", alignItems: "flex-start", animation: "klipPop 240ms var(--ease-spring)" }}>
+          <div role="status" aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", alignItems: "flex-start", animation: "klipoPop 240ms var(--ease-spring)" }}>
             <Badge tone="live" dot>sent</Badge>
             <p style={{ margin: 0, fontSize: "var(--text-base)", color: "var(--text-body)" }}>
               🌸 Check your email — your magic link is on its way. It expires in 15 minutes.

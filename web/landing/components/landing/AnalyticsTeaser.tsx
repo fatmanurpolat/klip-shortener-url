@@ -68,7 +68,7 @@ export function AnalyticsTeaser() {
 
         {/* Copy + bullets */}
         <div className="lp-analytics-copy">
-          <div className="klip-eyebrow" style={{ marginBottom: "var(--space-3)" }}>Clean, calm analytics</div>
+          <div className="klipo-eyebrow" style={{ marginBottom: "var(--space-3)" }}>Clean, calm analytics</div>
           <h2 id="analytics-h" className="lp-h2" style={{ marginBottom: "var(--space-4)" }}>
             All your clicks,{" "}
             <em style={{ fontStyle: "italic", fontWeight: 500, color: "var(--rose-600)" }}>in bloom</em>{" "}

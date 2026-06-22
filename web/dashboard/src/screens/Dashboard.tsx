@@ -107,7 +107,7 @@ export function Dashboard({ onOpenLink, onCreate }: { onOpenLink: (link: LinkIte
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
         <div>
-          <div className="klip-eyebrow" style={{ marginBottom: 6 }}>Your links</div>
+          <div className="klipo-eyebrow" style={{ marginBottom: 6 }}>Your links</div>
           <h1 style={{ fontSize: "var(--text-3xl)" }}>Links</h1>
         </div>
         <Button variant="primary" onClick={onCreate} style={{ background: "var(--brand-create)", boxShadow: "var(--glow-create)" }} iconLeft={<Icon icon={Plus} size={16} color="#fff" />}>
@@ -210,7 +210,7 @@ function StatTile({
         <span style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", fontWeight: 500 }}>{label}</span>
       </div>
       {value === null ? (
-        <div className="klip-skeleton" style={{ height: 28, width: 90 }} />
+        <div className="klipo-skeleton" style={{ height: 28, width: 90 }} />
       ) : (
         <div style={{ fontFamily: "var(--font-number)", fontSize: "var(--text-2xl)", fontWeight: 700, color: "var(--text-heading)" }}>
           {value.toLocaleString()}
@@ -297,10 +297,10 @@ function SkeletonList() {
         <Card key={i} tone="default" padding="none" style={{ padding: "16px 20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
             <div style={{ flex: 1 }}>
-              <div className="klip-skeleton" style={{ height: 16, width: "40%", marginBottom: 8 }} />
-              <div className="klip-skeleton" style={{ height: 12, width: "65%" }} />
+              <div className="klipo-skeleton" style={{ height: 16, width: "40%", marginBottom: 8 }} />
+              <div className="klipo-skeleton" style={{ height: 12, width: "65%" }} />
             </div>
-            <div className="klip-skeleton" style={{ height: 28, width: 60 }} />
+            <div className="klipo-skeleton" style={{ height: 28, width: 60 }} />
           </div>
         </Card>
       ))}

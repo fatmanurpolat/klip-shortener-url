@@ -1,5 +1,5 @@
 -- =============================================================================
--- Klip — blocked_domains
+-- Klipo — blocked_domains
 -- Destinations that may never be shortened. Consulted at shorten time (write
 -- path) by app/src/security/urlSafety.ts, step 5. Never read on the redirect
 -- hot path.

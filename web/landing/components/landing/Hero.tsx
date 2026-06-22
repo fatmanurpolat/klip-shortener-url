@@ -13,12 +13,12 @@ const BULLETS = [
 
 export function Hero() {
   return (
-    <section id="hero" className="lp-hero klip-bloom-bg" aria-labelledby="hero-h">
+    <section id="hero" className="lp-hero klipo-bloom-bg" aria-labelledby="hero-h">
       <div style={{ maxWidth: "var(--width-content)", marginInline: "auto", width: "100%", paddingInline: "var(--space-6)" }}>
         <div className="lp-hero-grid">
           {/* Left — pitch + working widget */}
           <div>
-            <div className="klip-eyebrow" style={{ marginBottom: "var(--space-3)" }}>
+            <div className="klipo-eyebrow" style={{ marginBottom: "var(--space-3)" }}>
               The link that breaks free
             </div>
             <h1 id="hero-h" className="lp-h1" style={{ marginBottom: "var(--space-4)" }}>
@@ -91,7 +91,7 @@ function ProofPanel() {
           display: "flex",
           flexDirection: "column",
           gap: 10,
-          animation: "klipFloat 7s var(--ease-in-out) infinite",
+          animation: "klipoFloat 7s var(--ease-in-out) infinite",
         }}
       >
         <MiniBrowser
@@ -112,7 +112,7 @@ function ProofPanel() {
               background: "rgba(255,255,255,0.22)",
               border: "1px solid rgba(255,255,255,0.35)",
               backdropFilter: "blur(6px)",
-              animation: "klipBounceUp 1.6s var(--ease-in-out) infinite",
+              animation: "klipoBounceUp 1.6s var(--ease-in-out) infinite",
             }}
           >
             <Icon icon={ArrowDown} size={18} color="#fff" strokeWidth={2.4} />
