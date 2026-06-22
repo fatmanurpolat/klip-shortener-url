@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getPool, getRedis } from '../db';
-import { env } from '../env';
+import { getPool } from '../db';
+import { getCachedUrl, setCachedUrl, setTombstone } from '../cache';
 import { detectWebview } from '../webview/detect';
 import { buildAndroidEscapePage } from '../webview/android';
 import { buildIosEscapePage } from '../webview/ios';
@@ -20,11 +20,6 @@ import { parseUA } from '../analytics/ua';
  *   - Negative results are cached as short-lived tombstones to absorb floods.
  *   - Click tracking is fire-and-forget (never awaited).
  */
-
-const TOMBSTONES = new Set(['NOT_FOUND', 'EXPIRED', 'DELETED']);
-const TOMBSTONE_TTL = 60; // seconds
-
-const keyFor = (code: string): string => `klip:url:${code}`;
 
 const NOT_FOUND_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
@@ -59,19 +54,34 @@ function notFound(reply: FastifyReply): FastifyReply {
   return reply.code(404).type('text/html; charset=utf-8').send(NOT_FOUND_HTML);
 }
 
-// Off the hot path: record a click for a 302 / webview interstitial. Skips when
-// the link id is unknown (e.g. a legacy plain-URL cache entry).
+// Off the hot path (setImmediate): record a click. On a cache hit the link id
+// isn't known, so we resolve it from the lookup table here — after the response
+// is already sent — keeping the redirect response itself SQL-free.
 function recordClick(
   request: FastifyRequest,
+  code: string,
   linkId: string | null,
   isWebview: boolean,
   network: string | null,
 ): void {
-  if (linkId === null) return;
-  setImmediate(() => {
+  setImmediate(async () => {
+    let id = linkId;
+    if (id === null) {
+      try {
+        const res = await getPool().query<{ link_id: string }>(
+          'SELECT link_id FROM links_code_lookup WHERE short_code = $1',
+          [code],
+        );
+        id = res.rows[0]?.link_id ?? null;
+      } catch {
+        id = null;
+      }
+    }
+    if (id === null) return;
+
     const ua = parseUA((request.headers['user-agent'] as string) ?? '');
     enqueueClick({
-      linkId: BigInt(linkId),
+      linkId: BigInt(id),
       createdAt: new Date(),
       ipHash: hashIp(request.ip),
       country: getCountry(request.ip),
@@ -85,25 +95,8 @@ function recordClick(
   });
 }
 
-// Parse a cache entry: JSON {u,id} (current) or a legacy plain-URL string.
-function parseCacheEntry(value: string): { url: string; linkId: string | null } {
-  if (value.charCodeAt(0) === 0x7b /* "{" */) {
-    try {
-      const obj = JSON.parse(value) as { u?: unknown; id?: unknown };
-      if (typeof obj.u === 'string') {
-        return { url: obj.u, linkId: typeof obj.id === 'string' ? obj.id : null };
-      }
-    } catch {
-      // fall through to legacy plain-URL handling
-    }
-  }
-  return { url: value, linkId: null };
-}
-
 async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const { code } = request.params as { code: string };
-  const redisClient = getRedis();
-  const key = keyFor(code);
 
   let longUrl: string;
   let isPrivate = false;
@@ -111,15 +104,15 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   let ownerId: string | null = null;
   let linkId: string | null = null;
 
-  const cached = await redisClient.get(key);
-  if (cached !== null) {
-    if (TOMBSTONES.has(cached)) {
+  // Hot path: try Redis first.
+  const cached = await getCachedUrl(code);
+  if (cached) {
+    if ('tombstone' in cached) {
       return notFound(reply);
     }
-    // Cache holds only public 302 links, so we can redirect with no DB work.
-    const entry = parseCacheEntry(cached);
-    longUrl = entry.url;
-    linkId = entry.linkId;
+    // Cache holds only public 302 URLs → redirect with no DB work. (linkId is
+    // unknown here; recordClick resolves it in the background.)
+    longUrl = cached.url;
   } else {
     const pgPool = getPool();
 
@@ -128,7 +121,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
       [code],
     );
     if (lookup.rows.length === 0) {
-      await redisClient.set(key, 'NOT_FOUND', 'EX', TOMBSTONE_TTL);
+      await setTombstone(code, 'NOT_FOUND');
       return notFound(reply);
     }
 
@@ -140,13 +133,13 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
       [lookup.rows[0].link_id, lookup.rows[0].created_at],
     );
     if (linkRes.rows.length === 0) {
-      await redisClient.set(key, 'NOT_FOUND', 'EX', TOMBSTONE_TTL);
+      await setTombstone(code, 'NOT_FOUND');
       return notFound(reply);
     }
 
     const row = linkRes.rows[0];
     if (row.expires_at !== null && row.expires_at.getTime() <= Date.now()) {
-      await redisClient.set(key, 'EXPIRED', 'EX', TOMBSTONE_TTL);
+      await setTombstone(code, 'EXPIRED');
       return notFound(reply);
     }
 
@@ -156,10 +149,9 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
     ownerId = row.owner_id;
     linkId = row.id;
 
-    // Repopulate cache only for public 302 links, storing the link id so cache
-    // hits can still record analytics.
+    // Cache only public, analytics-on (302) links as servable URLs.
     if (!isPrivate && !prefer301) {
-      await redisClient.set(key, JSON.stringify({ u: longUrl, id: linkId }), 'EX', env.REDIS_URL_TTL);
+      await setCachedUrl(code, longUrl);
     }
   }
 
@@ -177,7 +169,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   // Android in-app browser → serve the Chrome-intent escape page (200 HTML),
   // not a redirect. Record the click (is_webview) off the hot path.
   if (webview.isWebview && webview.platform === 'android') {
-    recordClick(request, linkId, true, webview.network);
+    recordClick(request, code, linkId, true, webview.network);
     const html = buildAndroidEscapePage(longUrl, webview.network ?? 'generic');
     return reply
       .code(200)
@@ -187,7 +179,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   }
   // iOS in-app browser → serve the Safari-escape interstitial (200 HTML).
   if (webview.isWebview && webview.platform === 'ios') {
-    recordClick(request, linkId, true, webview.network);
+    recordClick(request, code, linkId, true, webview.network);
     const html = buildIosEscapePage(longUrl, webview.network ?? 'generic');
     return reply
       .code(200)
@@ -204,7 +196,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   }
 
   // 302 (default): not cacheable, analytics on — record click off the hot path.
-  recordClick(request, linkId, false, webview.network);
+  recordClick(request, code, linkId, false, webview.network);
   reply.header('Cache-Control', 'no-store');
   return reply.redirect(longUrl, 302);
 }

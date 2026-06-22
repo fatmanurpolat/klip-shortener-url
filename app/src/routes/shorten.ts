@@ -2,8 +2,13 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getNextId } from '../counter';
 import { mintCode, COUNTER_OFFSET } from '../codes';
-import { getPool, getRedis } from '../db';
+import { getPool } from '../db';
 import { env } from '../env';
+import { setCachedUrl, checkRateLimit } from '../cache';
+
+// Per-IP rate limit for link creation.
+const SHORTEN_RATE_LIMIT = 20;
+const SHORTEN_RATE_WINDOW = 60; // seconds
 
 /**
  * POST /api/v1/shorten — mint a short code and persist a link.
@@ -69,6 +74,13 @@ function sendValidationError(error: z.ZodError, reply: FastifyReply): FastifyRep
 }
 
 async function handleShorten(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  // Rate limit per client IP before doing any work.
+  const rl = await checkRateLimit(`klip:rl:shorten:ip:${request.ip}`, SHORTEN_RATE_LIMIT, SHORTEN_RATE_WINDOW);
+  if (!rl.allowed) {
+    reply.header('Retry-After', String(SHORTEN_RATE_WINDOW));
+    return reply.code(429).send({ error: 'rate_limited', message: 'Too many requests. Please slow down.' });
+  }
+
   // 1. Validate the body strictly with Zod.
   const parsed = bodySchema.safeParse(request.body);
   if (!parsed.success) {
@@ -103,10 +115,7 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
   const id = (seq + COUNTER_OFFSET).toString(); // BIGINT param sent as text
   const shortCode = body.customAlias ?? mintCode(seq);
 
-  // The shared node-postgres pool and ioredis client from src/db.ts.
   const pgPool = getPool();
-  const redisClient = getRedis();
-
   const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
@@ -151,12 +160,7 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
     // record analytics. A Redis hiccup must not fail link creation.
     if (!body.private && body.analytics) {
       try {
-        await redisClient.set(
-          `klip:url:${shortCode}`,
-          JSON.stringify({ u: body.url, id }),
-          'EX',
-          env.REDIS_URL_TTL,
-        );
+        await setCachedUrl(shortCode, body.url);
       } catch (err) {
         request.log.warn({ err, shortCode }, 'shorten: redis cache write failed (non-fatal)');
       }
