@@ -20,13 +20,16 @@
     "@fastify/formbody": "^8.0.1",
     "dotenv": "^16.4.5",
     "fastify": "^5.1.0",
+    "geoip-lite": "^2.0.3",
     "hashids": "^2.3.0",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.13.1",
+    "ua-parser-js": "^2.0.10",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/geoip-lite": "^1.4.4",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.16.0",
     "@types/pg": "^8.11.10",

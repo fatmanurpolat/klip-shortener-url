@@ -111,26 +111,30 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
   try {
     await client.query('BEGIN');
 
-    // Insert the global code lookup first: this atomically detects alias
-    // collisions (ON CONFLICT DO NOTHING) before we touch the partitioned
-    // links table, and its created_at is reused so both tables align exactly
-    // for partition routing on the read path.
+    // Generate created_at once in the app and write the SAME value to both
+    // tables. (Using now() in one and a RETURNING round-trip in the other
+    // drifts by sub-millisecond — pg keeps microseconds, JS Date keeps only
+    // milliseconds — which breaks the exact `l.created_at = lcl.created_at`
+    // join used by the read/stats paths.) It's also the partition key.
+    const createdAt = new Date();
+
+    // Insert the global code lookup first: atomically detects alias collisions
+    // (ON CONFLICT DO NOTHING) before we touch the partitioned links table.
     const lookupSql = body.customAlias
       ? `INSERT INTO links_code_lookup (short_code, link_id, created_at)
-         VALUES ($1, $2, now())
+         VALUES ($1, $2, $3)
          ON CONFLICT (short_code) DO NOTHING
-         RETURNING created_at`
+         RETURNING short_code`
       : `INSERT INTO links_code_lookup (short_code, link_id, created_at)
-         VALUES ($1, $2, now())
-         RETURNING created_at`;
-    const lookup = await client.query<{ created_at: Date }>(lookupSql, [shortCode, id]);
+         VALUES ($1, $2, $3)
+         RETURNING short_code`;
+    const lookup = await client.query(lookupSql, [shortCode, id, createdAt]);
 
     if (lookup.rows.length === 0) {
       // Only reachable on the alias path (a fresh unique code can't conflict).
       await client.query('ROLLBACK');
       return reply.code(409).send({ error: 'alias_taken', message: 'This alias is already in use.' });
     }
-    const createdAt = lookup.rows[0].created_at;
 
     await client.query(
       `INSERT INTO links
@@ -142,12 +146,20 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
     // Explicit commit — data is durable and visible to other clients now.
     await client.query('COMMIT');
 
-    // 4. Best-effort cache. The redirect path falls back to the DB on a miss,
-    // so a Redis hiccup must not fail link creation.
-    try {
-      await redisClient.set(`klip:url:${shortCode}`, body.url, 'EX', env.REDIS_URL_TTL);
-    } catch (err) {
-      request.log.warn({ err, shortCode }, 'shorten: redis cache write failed (non-fatal)');
+    // 4. Best-effort cache — only for public, analytics-on (302) links, matching
+    // the redirect read path. Store {u,id} so cache-hit redirects can still
+    // record analytics. A Redis hiccup must not fail link creation.
+    if (!body.private && body.analytics) {
+      try {
+        await redisClient.set(
+          `klip:url:${shortCode}`,
+          JSON.stringify({ u: body.url, id }),
+          'EX',
+          env.REDIS_URL_TTL,
+        );
+      } catch (err) {
+        request.log.warn({ err, shortCode }, 'shorten: redis cache write failed (non-fatal)');
+      }
     }
 
     // 7. Success.

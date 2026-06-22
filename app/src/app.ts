@@ -7,9 +7,12 @@ import { env } from './env';
 import { getPool, getRedis, closeDb } from './db';
 import { registerHealthRoutes } from './routes/health';
 import { registerShortenRoutes } from './routes/shorten';
+import { registerStatsRoutes } from './routes/stats';
+import { registerLinksRoutes } from './routes/links';
 import { registerRedirectRoutes } from './routes/redirect';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAuthHook } from './middleware/authenticate';
+import { initClickWriter } from './analytics/clickWriter';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -60,7 +63,12 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerHealthRoutes(app);
   await registerAuthRoutes(app);
   await registerShortenRoutes(app);
+  await registerStatsRoutes(app);
+  await registerLinksRoutes(app);
   await registerRedirectRoutes(app); // parametric /:code — register last
+
+  // Start the background click-batch writer.
+  initClickWriter(app.log);
 
   app.addHook('onClose', async () => {
     await closeDb();
