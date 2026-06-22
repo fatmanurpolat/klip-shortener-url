@@ -43,7 +43,7 @@ const bodySchema = z.object({
  * is anonymous, so `private: true` always yields 401 — which is correct.
  */
 function getOwnerId(request: FastifyRequest): string | null {
-  return (request as FastifyRequest & { userId?: string | null }).userId ?? null;
+  return request.user?.userId ?? null;
 }
 
 /** Map a Zod failure to the specific error contract this endpoint promises. */
