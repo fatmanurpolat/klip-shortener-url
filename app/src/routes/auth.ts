@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db';
 import { env } from '../env';
+import { checkRateLimit } from '../cache';
 import {
   signMagicLinkToken,
   verifyMagicLinkToken,
@@ -9,6 +10,10 @@ import {
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
 } from '../auth';
+
+// Stricter per-IP limit on login requests (anti-abuse for the email path).
+const AUTH_RATE_LIMIT = 5;
+const AUTH_RATE_WINDOW = 60; // seconds
 
 const requestLoginSchema = z.object({
   email: z.string().email().max(320),
@@ -46,6 +51,12 @@ async function findOrCreateUser(email: string): Promise<{ id: string; email: str
 }
 
 async function handleRequestLogin(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const rl = await checkRateLimit(`klip:rl:auth:ip:${request.ip}`, AUTH_RATE_LIMIT, AUTH_RATE_WINDOW);
+  if (!rl.allowed) {
+    reply.header('Retry-After', String(AUTH_RATE_WINDOW));
+    return reply.code(429).send({ error: 'rate_limited', message: 'Too many login attempts. Please try again soon.' });
+  }
+
   const parsed = requestLoginSchema.safeParse(request.body);
   if (!parsed.success) {
     return reply.code(400).send({ error: 'validation_error', message: 'A valid email is required.' });

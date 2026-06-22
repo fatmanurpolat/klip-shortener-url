@@ -1,7 +1,8 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { getPool, getRedis } from '../db';
+import { getPool } from '../db';
 import { env } from '../env';
+import { setCachedUrl, setTombstone, invalidateCachedUrl } from '../cache';
 import { requireAuth } from '../middleware/authenticate';
 
 /**
@@ -148,8 +149,6 @@ async function resolveLink(code: string): Promise<OwnedLink | null> {
   return res.rows[0] ?? null;
 }
 
-const cacheKey = (code: string): string => `klip:url:${code}`;
-
 async function handlePatchLink(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const user = request.user;
   if (!user) return reply.code(401).send({ error: 'auth_required' });
@@ -211,22 +210,18 @@ async function handlePatchLink(request: FastifyRequest, reply: FastifyReply): Pr
   const newPrefer301 = body.analytics !== undefined ? !body.analytics : link.prefer_301;
 
   // Cache invalidation. Only public, non-301, non-expired links may be cached
-  // as a servable URL; anything else gets a short DELETED tombstone so the old
-  // cached URL stops being served immediately.
-  const key = cacheKey(code);
-  const redis = getRedis();
+  // as a servable URL; anything else stops serving the old cached URL now.
   const expired = newExpiresAt !== null && newExpiresAt.getTime() <= Date.now();
   if (!newPrivate && !newPrefer301 && !expired) {
     // Still a public 302 link → cache the (possibly new) URL.
-    await redis.set(key, JSON.stringify({ u: newLongUrl, id: link.id }), 'EX', env.REDIS_URL_TTL);
+    await setCachedUrl(code, newLongUrl);
   } else if (newPrivate || expired) {
-    // Privatized or expired → hard tombstone so the old URL stops serving now.
-    await redis.del(key);
-    await redis.set(key, 'DELETED', 'EX', 60);
+    // Privatized or expired → tombstone so the old URL stops serving immediately.
+    await setTombstone(code, expired ? 'EXPIRED' : 'DELETED');
   } else {
     // Now a 301 link (analytics off) but still valid → just drop it from cache;
     // the redirect resolves it from the DB as a 301 (a tombstone would 404 it).
-    await redis.del(key);
+    await invalidateCachedUrl(code);
   }
 
   return reply.code(200).send({
@@ -267,10 +262,7 @@ async function handleDeleteLink(request: FastifyRequest, reply: FastifyReply): P
   }
 
   // Tombstone so GET /:code 404s immediately (not after the URL TTL expires).
-  const key = cacheKey(code);
-  const redis = getRedis();
-  await redis.del(key);
-  await redis.set(key, 'DELETED', 'EX', 60);
+  await setTombstone(code, 'DELETED');
 
   return reply.code(204).send();
 }
