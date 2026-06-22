@@ -1,0 +1,250 @@
+/* Klipo dashboard — app layout + responsive rules (kd- prefix). */
+
+/* ===================== Login ===================== */
+.kd-login {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface-app);
+}
+.kd-login-form {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 64px;
+  max-width: 520px;
+  margin: 0 auto;
+  width: 100%;
+}
+.kd-login-art {
+  position: relative;
+  background-image: var(--wash-petal);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 56px;
+}
+.kd-login-art-glow {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(60% 50% at 80% 15%, rgba(255, 255, 255, 0.35), transparent 60%),
+    radial-gradient(50% 40% at 10% 80%, rgba(255, 255, 255, 0.18), transparent 60%);
+}
+.kd-login-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: 24px;
+  backdrop-filter: blur(8px);
+}
+@media (max-width: 860px) {
+  .kd-login { grid-template-columns: 1fr; }
+  .kd-login-art { display: none; }
+  .kd-login-form { padding: 40px 28px; }
+}
+
+/* ===================== App shell ===================== */
+.kd-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--surface-app);
+  background-image: var(--wash-bloom);
+  background-attachment: fixed;
+}
+.kd-sidebar {
+  width: var(--width-sidebar);
+  flex: none;
+  padding: 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  border-right: 1px solid var(--border-soft);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-glass));
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.kd-nav { display: flex; flex-direction: column; gap: 4px; }
+.kd-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-body);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 500;
+  text-align: left;
+  width: 100%;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.kd-nav-item:hover { background: var(--cream-200); }
+.kd-nav-item.on {
+  background: var(--lavender-100);
+  color: var(--lavender-700);
+  font-weight: 600;
+}
+.kd-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* Mobile top bar (shown when the sidebar collapses) */
+.kd-topbar { display: none; }
+@media (max-width: 860px) {
+  .kd-shell { flex-direction: column; }
+  .kd-sidebar { display: none; }
+  .kd-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    background: var(--surface-glass);
+    backdrop-filter: blur(var(--blur-glass));
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .kd-topnav { display: flex; gap: 4px; }
+  .kd-topnav button {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: var(--radius-pill);
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .kd-topnav button.on { background: var(--lavender-100); color: var(--lavender-700); }
+}
+
+/* ===================== Page container ===================== */
+.kd-page {
+  padding: 32px 40px 56px;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+@media (max-width: 640px) {
+  .kd-page { padding: 24px 16px 40px; }
+}
+
+/* ===================== Dashboard ===================== */
+.kd-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.kd-link-row { display: flex; align-items: center; gap: 20px; }
+.kd-link-row-cols { display: flex; align-items: center; gap: 20px; flex: none; }
+@media (max-width: 760px) {
+  .kd-stat-strip { grid-template-columns: 1fr; }
+  .kd-link-row { flex-wrap: wrap; gap: 12px; }
+  .kd-link-row-metric { display: none; }
+}
+
+/* ===================== Stats ===================== */
+.kd-stat-tiles { display: flex; gap: 16px; margin-bottom: 16px; }
+.kd-two-col { display: grid; grid-template-columns: 1fr 1px 1fr; gap: 28px; }
+@media (max-width: 760px) {
+  .kd-stat-tiles { flex-direction: column; }
+  .kd-two-col { grid-template-columns: 1fr; gap: 24px; }
+  .kd-two-col > .kd-divider { display: none; }
+}
+.kd-divider { background: var(--border-soft); }
+
+/* ===================== Settings ===================== */
+.kd-settings-section {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 32px;
+  padding: 28px 0;
+  border-top: 1px solid var(--border-soft);
+}
+@media (max-width: 760px) {
+  .kd-settings-section { grid-template-columns: 1fr; gap: 16px; }
+}
+
+/* ===================== Modal ===================== */
+.kd-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(var(--blur-overlay));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: klipFade 180ms var(--ease-out);
+}
+.kd-modal {
+  width: 100%;
+  max-width: 540px;
+  background: var(--surface-card);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  animation: klipPop 240ms var(--ease-spring);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+/* ===================== Toast ===================== */
+.kd-toast-wrap {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.kd-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--plum-800);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  animation: klipRise var(--dur-base) var(--ease-out);
+}
+
+/* Centered full-page loader */
+.kd-center {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-app);
+  background-image: var(--wash-bloom);
+}
+.kd-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--cream-300);
+  border-top-color: var(--rose-500);
+  border-radius: 50%;
+  animation: klipSpin 0.9s linear infinite;
+}

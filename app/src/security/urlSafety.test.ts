@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 // loads. SAFE_BROWSING_API_KEY is forced ON so the Safe Browsing path runs and
 // can be exercised; SHORT_DOMAIN is pinned for the self-referential test.
 process.env.NODE_ENV = 'test';
-process.env.SHORT_DOMAIN = 'klip.to';
+process.env.SHORT_DOMAIN = 'klipo.to';
 process.env.SAFE_BROWSING_API_KEY = 'test-key';
 process.env.DATABASE_URL ??= 'postgres://klip:test@localhost:5432/klip';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
@@ -181,8 +181,8 @@ test('a host resolving only to public IPs passes', async () => {
 // --- 4. Self-referential -----------------------------------------------------
 test('the short domain and its subdomains are SELF_REFERENTIAL', async () => {
   resolve4Impl = async () => ['93.184.216.34']; // routable unicast, so it reaches step 4
-  assert.equal(await codeOf(urlSafety.validateUrl('https://klip.to/abc', quiet)), 'SELF_REFERENTIAL');
-  assert.equal(await codeOf(urlSafety.validateUrl('https://go.klip.to/abc', quiet)), 'SELF_REFERENTIAL');
+  assert.equal(await codeOf(urlSafety.validateUrl('https://klipo.to/abc', quiet)), 'SELF_REFERENTIAL');
+  assert.equal(await codeOf(urlSafety.validateUrl('https://go.klipo.to/abc', quiet)), 'SELF_REFERENTIAL');
 });
 
 // --- 5. Domain blocklist -----------------------------------------------------
@@ -261,5 +261,5 @@ test('a fresh Safe Browsing verdict is cached with a 12h EX TTL', async () => {
 test('a trailing-dot host is normalized (localhost. and short-domain.)', async () => {
   assert.equal(await codeOf(urlSafety.validateUrl('http://localhost./x', quiet)), 'PRIVATE_HOST');
   resolve4Impl = async () => ['93.184.216.34']; // reaches step 4
-  assert.equal(await codeOf(urlSafety.validateUrl('https://klip.to./x', quiet)), 'SELF_REFERENTIAL');
+  assert.equal(await codeOf(urlSafety.validateUrl('https://klipo.to./x', quiet)), 'SELF_REFERENTIAL');
 });
