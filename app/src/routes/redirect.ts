@@ -11,7 +11,7 @@ import { rateLimit, getClientIp } from '../security/rateLimit';
 import { performance } from 'node:perf_hooks';
 import { redirectsTotal, cacheHits, redirectDuration } from '../metrics';
 
-type RedirectType = '301' | '302' | 'interstitial' | '404';
+type RedirectType = '301' | '302' | 'interstitial' | '404' | 'disabled';
 
 /**
  * GET /:code — resolve a short code to its destination and redirect.
@@ -48,6 +48,7 @@ interface LinkRow {
   is_private: boolean;
   prefer_301: boolean;
   owner_id: string | null;
+  is_disabled: boolean;
 }
 
 /** Owner of the request, or null (populated by the global authenticate hook). */
@@ -57,6 +58,31 @@ function getOwnerId(request: FastifyRequest): string | null {
 
 function notFound(reply: FastifyReply): FastifyReply {
   return reply.code(404).type('text/html; charset=utf-8').send(NOT_FOUND_HTML);
+}
+
+const DISABLED_HTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Link disabled — Klipo</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;
+       background:linear-gradient(135deg,#fffafc,#fdf2fb 45%,#eef3ff);color:#5b4a6b}
+  .box{text-align:center;padding:2rem;max-width:28rem}
+  h1{font-size:3rem;margin:0}
+  h2{margin:.5rem 0}
+  p{opacity:.8}
+</style></head>
+<body><div class="box"><h1>🚫</h1><h2>This link has been disabled</h2>
+<p>This short link was turned off and no longer forwards anywhere.</p></div></body></html>`;
+
+// 200 (not a redirect): the link exists but is disabled. No analytics, no cache.
+function disabledPage(reply: FastifyReply): FastifyReply {
+  return reply
+    .code(200)
+    .type('text/html; charset=utf-8')
+    .header('Cache-Control', 'no-store')
+    .send(DISABLED_HTML);
 }
 
 // Off the hot path (setImmediate): record a click. On a cache hit the link id
@@ -121,6 +147,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   let longUrl = '';
   let isPrivate = false;
   let prefer301 = false;
+  let isDisabled = false;
   let ownerId: string | null = null;
   let linkId: string | null = null;
 
@@ -172,6 +199,13 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
 
   if (cached) {
     if ('tombstone' in cached) {
+      // A DISABLED marker means the link exists but was turned off by an admin →
+      // serve the 200 disabled page, never a 404. EXPIRED/DELETED/NOT_FOUND are
+      // genuine negatives → 404. (Either way, zero DB work.)
+      if (cached.tombstone === 'DISABLED') {
+        finish('disabled', 200);
+        return disabledPage(reply);
+      }
       finish('404', 404);
       return notFound(reply);
     }
@@ -195,7 +229,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
 
     // Partition-pruned read: both PK columns supplied.
     const linkRes = await pgPool.query<LinkRow>(
-      `SELECT id, long_url, expires_at, is_private, prefer_301, owner_id
+      `SELECT id, long_url, expires_at, is_private, prefer_301, owner_id, is_disabled
          FROM links
         WHERE id = $1 AND created_at = $2`,
       [lookup.rows[0].link_id, lookup.rows[0].created_at],
@@ -219,11 +253,15 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
     longUrl = row.long_url;
     isPrivate = row.is_private;
     prefer301 = row.prefer_301;
+    isDisabled = row.is_disabled;
     ownerId = row.owner_id;
     linkId = row.id;
 
-    // Cache only public, analytics-on (302) links as servable URLs.
-    if (!isPrivate && !prefer301) {
+    // Cache only public, analytics-on (302) links that are NOT disabled, so a
+    // cache hit always means a live, servable link. If an admin disables this link
+    // concurrently (after our DB read but before this write), setCachedUrl is a
+    // no-op against the DISABLED marker — the marker can't be clobbered here.
+    if (!isPrivate && !prefer301 && !isDisabled) {
       await cacheWrite(setCachedUrl(code, longUrl));
     }
   }
@@ -235,6 +273,16 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
       finish('404', 404);
       return notFound(reply);
     }
+  }
+
+  // Disabled by an admin → serve the disabled page (200), no redirect, no
+  // analytics. Write a DISABLED marker so subsequent hits short-circuit in Redis
+  // without a DB round-trip, and so a concurrent in-flight redirect cannot
+  // re-cache the live URL over us (setCachedUrl refuses to overwrite DISABLED).
+  if (isDisabled) {
+    await cacheWrite(setTombstone(code, 'DISABLED'));
+    finish('disabled', 200);
+    return disabledPage(reply);
   }
 
   // Android in-app browser → serve the Chrome-intent escape page (200 HTML),

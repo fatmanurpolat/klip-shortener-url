@@ -22,7 +22,7 @@ missing="$(
   docker compose -f "${COMPOSE_FILE}" exec -T postgres \
     psql -U "${PGUSER}" -d "${PGDB}" -tA -c "
       SELECT t || '_' || to_char(now() + interval '1 month', 'YYYY_MM')
-      FROM (VALUES ('links'), ('clicks')) AS x(t)
+      FROM (VALUES ('links'), ('clicks'), ('shorten_audit')) AS x(t)
       WHERE to_regclass('public.' || t || '_' || to_char(now() + interval '1 month', 'YYYY_MM')) IS NULL;
     "
 )"
