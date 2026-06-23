@@ -1,0 +1,16 @@
+# Klipo — monthly partition maintenance (cron.d format).
+#
+# Install:
+#   sudo cp db/maintenance/klip-partitions.cron /etc/cron.d/klip-partitions
+#   sudo chown root:root /etc/cron.d/klip-partitions
+#   sudo chmod 0644 /etc/cron.d/klip-partitions
+#
+# Adjust the path below if the repo isn't at /opt/klip. Runs 03:10 on the 1st of
+# every month — well before the current month's partitions could fill. The wrapper
+# creates current + next 2 months and prunes partitions past retention.
+#
+# cron has a minimal PATH; set it so `docker` resolves.
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+10 3 1 * * root /opt/klip/scripts/roll-partitions.sh >> /var/log/klip-partitions.log 2>&1
