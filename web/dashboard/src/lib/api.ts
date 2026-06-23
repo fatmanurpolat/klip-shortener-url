@@ -297,7 +297,7 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
+  const d = Math.floor(h / 24);∏
   if (d < 7) return `${d}d ago`;
   const w = Math.floor(d / 7);
   if (w < 5) return `${w}w ago`;
