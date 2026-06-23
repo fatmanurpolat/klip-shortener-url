@@ -15,8 +15,10 @@ import { getPool, getRedis } from './db';
  * Redis INCR and Postgres nextval() are both atomic.
  */
 
-// 62^4 — the first 4-character base-62 short code. Keeps early codes a fixed
-// width and non-trivial to guess.
+// The counter's starting value (default 0). NOTE: code WIDTH is controlled by
+// Hashids MIN_LENGTH (4) in codes.ts, not by this offset — a large offset just
+// pre-inflates the encoded integer and yields longer codes. Keep at 0 unless you
+// deliberately want to start the ID space higher.
 export const COUNTER_OFFSET: bigint = BigInt(env.COUNTER_OFFSET);
 
 /** Redis key holding the last issued ID. */

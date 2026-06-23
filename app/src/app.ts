@@ -8,6 +8,7 @@ import Redis from 'ioredis';
 import { env } from './env';
 import { getPool, getRedis, closeDb } from './db';
 import { registerHealthRoutes } from './routes/health';
+import { registerMetricsRoutes } from './routes/metrics';
 import { registerShortenRoutes } from './routes/shorten';
 import { registerStatsRoutes } from './routes/stats';
 import { registerLinksRoutes } from './routes/links';
@@ -31,7 +32,12 @@ declare module 'fastify' {
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
-      level: env.NODE_ENV === 'production' ? 'info' : 'debug',
+      level: env.LOG_LEVEL,
+      // Pretty, human-readable logs in development; raw JSON in production for
+      // log shippers (transport undefined → Pino's default stdout JSON).
+      transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
+      // Never log auth tokens or session cookies, even at debug level.
+      redact: ['req.headers.authorization', 'req.headers.cookie'],
     },
     // Honor X-Forwarded-For (so req.ip is the real client) only behind a trusted
     // proxy — gated by TRUST_PROXY so XFF can't be spoofed in untrusted setups.
@@ -73,6 +79,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerAuthHook(app);
 
   await registerHealthRoutes(app);
+  await registerMetricsRoutes(app);
   await registerAuthRoutes(app);
   await registerShortenRoutes(app);
   await registerStatsRoutes(app);

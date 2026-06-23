@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { getPool } from '../db';
+import { clickQueueDepth } from '../metrics';
 
 /**
  * Non-blocking click recorder. Redirects enqueue events synchronously (never
@@ -32,6 +33,7 @@ let logError: (err: unknown, dropped: number) => void = (err, dropped) =>
 export function enqueueClick(event: ClickEvent): void {
   try {
     queue.push(event);
+    clickQueueDepth.set(queue.length);
   } catch {
     // Swallow — recording analytics must never break a redirect.
   }
@@ -56,6 +58,7 @@ async function flush(): Promise<void> {
   // Atomic swap: new enqueues land in a fresh array while we write this batch.
   const batch = queue;
   queue = [];
+  clickQueueDepth.set(0);
   try {
     await writeBatch(batch);
   } catch (err) {
