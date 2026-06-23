@@ -41,6 +41,10 @@ const envSchema = z.object({
   // start without it). Use a long, random string in every environment.
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
 
+  // Shared secret for the internal /admin endpoints (sent as the X-Admin-Secret
+  // header). When UNSET, the admin API is disabled (every call returns 503).
+  ADMIN_SECRET: z.string().min(16).optional(),
+
   RAW_CLICK_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(90),
   LINK_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(120),
 });

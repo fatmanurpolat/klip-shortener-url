@@ -28,6 +28,9 @@ SELECT create_month_partition('links',  date_trunc('month', now() + interval '2 
 SELECT create_month_partition('clicks', date_trunc('month', now())::date);
 SELECT create_month_partition('clicks', date_trunc('month', now() + interval '1 month')::date);
 SELECT create_month_partition('clicks', date_trunc('month', now() + interval '2 months')::date);
+SELECT create_month_partition('shorten_audit', date_trunc('month', now())::date);
+SELECT create_month_partition('shorten_audit', date_trunc('month', now() + interval '1 month')::date);
+SELECT create_month_partition('shorten_audit', date_trunc('month', now() + interval '2 months')::date);
 
 -- psql does NOT interpolate :vars inside $$-quoted DO blocks, so stash the
 -- retention values into session GUCs here (plain SQL — substitution works) and
@@ -56,6 +59,27 @@ BEGIN
       AND (to_date(right(tablename, 7), 'YYYY_MM') + interval '1 month')::date <= cutoff
   LOOP
     RAISE NOTICE 'Dropping old clicks partition: % (cutoff %)', r.tablename, cutoff;
+    EXECUTE format('DROP TABLE IF EXISTS %I', r.tablename);
+  END LOOP;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- 2b. Drop `shorten_audit` partitions past the same (raw-click) retention — it's
+--     high-volume append-only operational data, like clicks.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  r       RECORD;
+  cutoff  DATE := current_date - make_interval(days => current_setting('klipo.raw_click_retention_days')::int);
+BEGIN
+  FOR r IN
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename ~ '^shorten_audit_\d{4}_\d{2}$'
+      AND (to_date(right(tablename, 7), 'YYYY_MM') + interval '1 month')::date <= cutoff
+  LOOP
+    RAISE NOTICE 'Dropping old shorten_audit partition: % (cutoff %)', r.tablename, cutoff;
     EXECUTE format('DROP TABLE IF EXISTS %I', r.tablename);
   END LOOP;
 END $$;

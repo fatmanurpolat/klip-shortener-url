@@ -6,8 +6,34 @@ import { getPool } from '../db';
 import { SHORT_BASE_URL } from '../env';
 import { setCachedUrl } from '../cache';
 import { validateUrl, UrlSafetyError, urlSafetyResponse } from '../security/urlSafety';
-import { rateLimit } from '../security/rateLimit';
+import { rateLimit, getClientIp } from '../security/rateLimit';
+import { ipPrefix } from '../security/ipPrefix';
 import { shortenTotal } from '../metrics';
+
+// Active-link quotas (not disabled, not expired). Anonymous are keyed by IP
+// prefix; authenticated by owner.
+const ANON_QUOTA = 100;
+const AUTH_QUOTA = 10_000;
+
+/** True if the owner (or anonymous IP prefix) is at/over their active-link quota. */
+async function isOverQuota(ownerId: string | null, ipPref: string): Promise<boolean> {
+  const pool = getPool();
+  const activeClause = 'NOT is_disabled AND (expires_at IS NULL OR expires_at > now())';
+  if (ownerId) {
+    const r = await pool.query<{ n: string }>(
+      `SELECT count(*)::bigint AS n FROM links WHERE owner_id = $1 AND ${activeClause}`,
+      [ownerId],
+    );
+    return Number(r.rows[0].n) >= AUTH_QUOTA;
+  }
+  // Anonymous: can only enforce the quota when we have a usable IP prefix.
+  if (!ipPref) return false;
+  const r = await pool.query<{ n: string }>(
+    `SELECT count(*)::bigint AS n FROM links WHERE owner_id IS NULL AND ip_prefix = $1 AND ${activeClause}`,
+    [ipPref],
+  );
+  return Number(r.rows[0].n) >= ANON_QUOTA;
+}
 
 /**
  * POST /api/v1/shorten — mint a short code and persist a link.
@@ -112,6 +138,20 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
     return reply.code(500).send({ error: 'internal_error', message: 'Could not validate the URL.' });
   }
 
+  // Per-owner / per-IP active-link quota. Uses the proxy-attested client IP so a
+  // spoofed XFF can't dodge it. (Domain blocklist is enforced inside validateUrl.)
+  const ipPref = ipPrefix(getClientIp(request));
+  try {
+    if (await isOverQuota(ownerId, ipPref)) {
+      return reply.code(429).send({ error: 'quota_exceeded', message: 'Link quota reached.' });
+    }
+  } catch (err) {
+    // A quota-count failure must fail closed on the write path, not silently
+    // let an abuser past the limit.
+    request.log.error({ err }, 'shorten: quota check failed');
+    return reply.code(503).send({ error: 'quota_check_unavailable', message: 'Please retry in a moment.' });
+  }
+
   // 2-3. Allocate a unique ID and derive the short code. Custom aliases also
   // consume a real ID so link_id uniquely identifies one links row.
   let seq: bigint;
@@ -158,13 +198,26 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
 
     await client.query(
       `INSERT INTO links
-         (id, short_code, long_url, owner_id, is_private, prefer_301, expires_at, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, shortCode, body.url, ownerId, body.private, !body.analytics, body.expiresAt ?? null, createdAt],
+         (id, short_code, long_url, owner_id, is_private, prefer_301, expires_at, created_at, ip_prefix)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [id, shortCode, body.url, ownerId, body.private, !body.analytics, body.expiresAt ?? null, createdAt, ipPref || null],
     );
 
     // Explicit commit — data is durable and visible to other clients now.
     await client.query('COMMIT');
+
+    // Audit log — fire-and-forget (like click recording): never awaited, never
+    // blocks or fails the response. Records who shortened what, from which IP
+    // prefix, for abuse investigation.
+    setImmediate(() => {
+      getPool()
+        .query(
+          `INSERT INTO shorten_audit (short_code, long_url, owner_id, ip_prefix, created_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [shortCode, body.url, ownerId, ipPref || null, createdAt],
+        )
+        .catch((err) => request.log.warn({ err, shortCode }, 'shorten: audit write failed (non-fatal)'));
+    });
 
     // 4. Best-effort cache — only for public, analytics-on (302) links, matching
     // the redirect read path. Store {u,id} so cache-hit redirects can still
