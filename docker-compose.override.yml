@@ -16,6 +16,9 @@ services:
     ports:
       - "5432:5432"
 
-  redis:
+  # Expose the Redis MASTER on the host for local tools / the local-dev app
+  # (which connects single-node via REDIS_URL=redis://localhost:6379). The
+  # dockerized app uses Sentinel and is unaffected.
+  redis-master:
     ports:
       - "127.0.0.1:6379:6379"

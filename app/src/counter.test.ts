@@ -42,6 +42,11 @@ function makeFakeRedis() {
       if (target > cur) store.set(key, target.toString());
       return store.get(key)!;
     },
+    // The Sentinel failover hook registers a 'ready' listener; the fake never
+    // emits, so this is an inert no-op (single-node behavior is unchanged).
+    on() {
+      return this;
+    },
   };
 }
 
@@ -142,6 +147,9 @@ test('getNextId() throws a clear error when Redis is unavailable', async () => {
     async incr() {
       throw new Error('connect ECONNREFUSED');
     },
+    on() {
+      return this;
+    },
   };
   db.__setClientsForTest({
     redis: brokenRedis as unknown as import('ioredis').default,
@@ -182,6 +190,35 @@ test('postgres backend draws IDs from nextval()', async () => {
     const b = await counter.getNextId();
     assert.ok(b > a, 'sequence IDs must increase');
     assert.ok(a >= counter.COUNTER_OFFSET);
+  } finally {
+    env.COUNTER_BACKEND = original as 'redis' | 'postgres';
+  }
+});
+
+test('postgres backend fast-forwards link_id_seq past existing links on init', async () => {
+  // Guards the switch FROM the Redis counter: the sequence sat unused (behind
+  // MAX(link_id)) while ids came from Redis, so init MUST advance it or nextval()
+  // would reissue ids 1,2,3… that already belong to links.
+  const env = (await import('./env.js')).env;
+  const original = env.COUNTER_BACKEND;
+  env.COUNTER_BACKEND = 'postgres';
+
+  const queries: string[] = [];
+  const fakePool = {
+    async query(sql: string) {
+      queries.push(sql);
+      if (/pg_class/i.test(sql)) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+  };
+  db.__setClientsForTest({ pool: fakePool as unknown as import('pg').Pool });
+
+  try {
+    await counter.initCounter();
+    assert.ok(
+      queries.some((q) => /setval\('link_id_seq'/i.test(q) && /MAX\(link_id\)/i.test(q)),
+      'init must issue a setval() that fast-forwards link_id_seq past MAX(link_id)',
+    );
   } finally {
     env.COUNTER_BACKEND = original as 'redis' | 'postgres';
   }

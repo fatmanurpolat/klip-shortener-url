@@ -193,7 +193,11 @@ CREATE TABLE IF NOT EXISTS clicks_2026_08 PARTITION OF clicks
 
 
 -- -----------------------------------------------------------------------------
--- 9. Postgres sequence fallback for link IDs (used when COUNTER_BACKEND=postgres;
---    otherwise Redis owns the counter). Starts at the same offset as the app.
+-- 9. Postgres sequence for link IDs (the default counter backend; Redis owns the
+--    counter only when COUNTER_BACKEND=redis). Starts at 1 — the 4-char short-code
+--    floor comes from Hashids min-length, NOT a large START (a big start only
+--    inflates codes). The app fast-forwards this past MAX(link_id) on startup
+--    (counter.ts initPostgresCounter), so a restore or a switch from the Redis
+--    counter can never reissue an existing id.
 -- -----------------------------------------------------------------------------
-CREATE SEQUENCE IF NOT EXISTS link_id_seq START WITH 14776336;
+CREATE SEQUENCE IF NOT EXISTS link_id_seq START WITH 1;
