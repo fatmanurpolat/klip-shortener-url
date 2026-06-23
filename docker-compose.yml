@@ -59,6 +59,11 @@ services:
       # COUNTER_BACKEND=redis to use the Sentinel Redis counter instead — safe in
       # practice but not absolute; see docs/ha-redis-sentinel.md.)
       COUNTER_BACKEND: ${COUNTER_BACKEND:-postgres}
+      # Only for COUNTER_BACKEND=snowflake: this node's id (0-1023). MUST be UNIQUE
+      # per replica — `--scale app=N` shares this value, so every replica would get
+      # the same id and mint DUPLICATES. Assign per-replica (separate service entries
+      # or an orchestrator ordinal) before scaling on the snowflake backend.
+      MACHINE_ID: ${MACHINE_ID:-0}
     expose:
       - "3000"
     depends_on:
