@@ -49,12 +49,28 @@ services:
       # overridable) — without it every client collapses to nginx's IP and shares
       # one rate-limit bucket. Set TRUST_PROXY=false only for direct exposure.
       TRUST_PROXY: ${TRUST_PROXY:-true}
+      # Connect to Redis VIA Sentinel (HA): the client follows master failover.
+      # Leave REDIS_SENTINELS unset (e.g. local dev) to use REDIS_URL single-node.
+      REDIS_SENTINELS: ${REDIS_SENTINELS:-redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379}
+      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-klip-master}
+      # IDs come from a Postgres SEQUENCE, not the Redis counter: durable + HA via
+      # Postgres with ZERO async-replication window, so failover can never reissue
+      # an id. Sentinel above provides HA for the cache + rate limits. (Set
+      # COUNTER_BACKEND=redis to use the Sentinel Redis counter instead — safe in
+      # practice but not absolute; see docs/ha-redis-sentinel.md.)
+      COUNTER_BACKEND: ${COUNTER_BACKEND:-postgres}
     expose:
       - "3000"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      redis-master:
+        condition: service_healthy
+      redis-sentinel-1:
+        condition: service_healthy
+      redis-sentinel-2:
+        condition: service_healthy
+      redis-sentinel-3:
         condition: service_healthy
     healthcheck:
       test:
@@ -88,7 +104,12 @@ services:
     networks:
       - klip_net
 
-  redis:
+  # --- Redis HA via Sentinel: 1 master + 2 replicas + 3 sentinels --------------
+  # The app talks to Sentinel (not a fixed node), so a master failure triggers an
+  # automatic failover to a replica with no app reconfiguration. The ID counter
+  # additionally fast-forwards past the highest persisted id on every failover
+  # (app/src/counter.ts) so a lagging promoted replica can't reissue an ID.
+  redis-master:
     image: redis:7-alpine
     restart: unless-stopped
     command:
@@ -102,7 +123,7 @@ services:
       - "--maxmemory-policy"
       - "noeviction"
     volumes:
-      - redisdata:/data
+      - redismaster:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -112,9 +133,140 @@ services:
     networks:
       - klip_net
 
+  redis-replica-1:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - "redis-server"
+      - "--replicaof"
+      - "redis-master"
+      - "6379"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--maxmemory"
+      - "512mb"
+      - "--maxmemory-policy"
+      - "noeviction"
+    volumes:
+      - redisreplica1:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - klip_net
+
+  redis-replica-2:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - "redis-server"
+      - "--replicaof"
+      - "redis-master"
+      - "6379"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--maxmemory"
+      - "512mb"
+      - "--maxmemory-policy"
+      - "noeviction"
+    volumes:
+      - redisreplica2:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - klip_net
+
+  # Three sentinels (quorum 2). Each COPIES the read-only template to a writable
+  # path first, because Sentinel rewrites its own config at runtime — a shared RO
+  # mount would break that (see redis/sentinel.conf).
+  redis-sentinel-1:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: sh -c "cp /etc/redis/sentinel.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_started
+      redis-replica-2:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - klip_net
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: sh -c "cp /etc/redis/sentinel.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_started
+      redis-replica-2:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - klip_net
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: sh -c "cp /etc/redis/sentinel.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"
+    volumes:
+      - ./redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_started
+      redis-replica-2:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - klip_net
+
 volumes:
   pgdata:
-  redisdata:
+  redismaster:
+  redisreplica1:
+  redisreplica2:
   nginx_cache:
 
 networks:

@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 
   // Seed/recover the ID counter before we accept any traffic.
   try {
-    await initCounter();
+    await initCounter(app.log);
     app.log.info({ backend: env.COUNTER_BACKEND }, 'id counter ready');
   } catch (err) {
     app.log.error({ err }, 'failed to initialize id counter');

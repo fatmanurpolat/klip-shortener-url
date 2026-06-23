@@ -30,11 +30,11 @@ echo "[backup] Snapshotting Redis AOF..."
 # which only rewrites redis.conf). Redis is mostly a cache; the only state that
 # isn't reconstructable from Postgres is the ID counter — and that is separately
 # recoverable via scripts/recover-counter.sh — so this snapshot is a convenience.
-dc exec -T redis redis-cli BGREWRITEAOF >/dev/null || true
+dc exec -T redis-master redis-cli BGREWRITEAOF >/dev/null || true
 # Give the background rewrite a moment to settle (best-effort; AOF is append-only
 # so an in-flight copy is still consistent enough to restore from).
 sleep 2
-dc cp redis:/data/appendonlydir "${BACKUP_DIR}/klip-redis-aof-${DATE}"
+dc cp redis-master:/data/appendonlydir "${BACKUP_DIR}/klip-redis-aof-${DATE}"
 echo "[backup] Redis AOF saved: ${BACKUP_DIR}/klip-redis-aof-${DATE}"
 
 echo "[backup] Pruning backups older than 30 days..."

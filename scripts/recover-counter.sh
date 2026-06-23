@@ -37,6 +37,25 @@ NEW_VALUE="$(
 [[ "${NEW_VALUE}" =~ ^[0-9]+$ ]] || { echo "[counter-recovery] ERROR: unexpected value '${NEW_VALUE}' from Postgres" >&2; exit 1; }
 
 echo "[counter-recovery] Setting ${COUNTER_KEY} to ${NEW_VALUE} (MAX(link_id)+1, offset ${OFFSET})"
-dc exec -T redis redis-cli SET "${COUNTER_KEY}" "${NEW_VALUE}" | tr -d '\r'
+
+# Write to the CURRENT master. After a Sentinel failover the master is a promoted
+# replica, NOT necessarily the `redis-master` container — and a SET on a replica
+# is rejected (READONLY). Ask a Sentinel where the master is, then target it.
+MASTER_ADDR=""
+if dc ps --services 2>/dev/null | grep -qx redis-sentinel-1; then
+  MASTER_ADDR="$(dc exec -T redis-sentinel-1 redis-cli -p 26379 \
+    SENTINEL get-master-addr-by-name klip-master 2>/dev/null | tr -d '\r')"
+fi
+
+if [ -n "${MASTER_ADDR}" ]; then
+  MHOST="$(printf '%s\n' "${MASTER_ADDR}" | sed -n 1p)"
+  MPORT="$(printf '%s\n' "${MASTER_ADDR}" | sed -n 2p)"
+  echo "[counter-recovery] Current master (via Sentinel): ${MHOST}:${MPORT}"
+  dc exec -T redis-sentinel-1 redis-cli -h "${MHOST}" -p "${MPORT}" \
+    SET "${COUNTER_KEY}" "${NEW_VALUE}" | tr -d '\r'
+else
+  # Single-node fallback (no Sentinel running): write to the master service.
+  dc exec -T redis-master redis-cli SET "${COUNTER_KEY}" "${NEW_VALUE}" | tr -d '\r'
+fi
 
 echo "[counter-recovery] Done. The counter will never reuse an existing ID."

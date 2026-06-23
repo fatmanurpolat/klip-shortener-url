@@ -28,12 +28,18 @@ function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// Optional structured logger (the app's pino instance), set by initCounter. Used
+// to surface post-failover recovery failures on the redis backend.
+type CounterLog = { error: (obj: unknown, msg?: string) => void };
+let counterLog: CounterLog | null = null;
+
 /**
  * Seed/recover the counter. Call exactly once during startup, before the app
  * begins serving requests. Idempotent: calling it again will not reset an
  * already-seeded counter.
  */
-export async function initCounter(): Promise<void> {
+export async function initCounter(log?: CounterLog): Promise<void> {
+  counterLog = log ?? null;
   if (env.COUNTER_BACKEND === 'redis') {
     await initRedisCounter();
   } else {
@@ -46,14 +52,18 @@ export async function initCounter(): Promise<void> {
  */
 export async function getNextId(): Promise<bigint> {
   if (env.COUNTER_BACKEND === 'redis') {
+    // If a Sentinel failover just promoted a replica, wait for the counter to be
+    // fast-forwarded past the highest persisted id before INCRing — otherwise we
+    // could hand out an ID the old master already issued (async replication lag).
+    if (recoveryBarrier) await recoveryBarrier;
     const redis = getRedis();
     try {
       const next = await redis.incr(COUNTER_KEY);
       return BigInt(next);
     } catch (err) {
       throw new Error(
-        `Klipo counter: INCR "${COUNTER_KEY}" failed — Redis unavailable at ${env.REDIS_URL}. ` +
-          `Cause: ${describe(err)}`,
+        `Klipo counter: INCR "${COUNTER_KEY}" failed — Redis unavailable (Sentinel or ` +
+          `single-node). Cause: ${describe(err)}`,
       );
     }
   }
@@ -75,6 +85,65 @@ export async function getNextId(): Promise<bigint> {
 // -----------------------------------------------------------------------------
 // Redis backend
 // -----------------------------------------------------------------------------
+// Atomic, MONOTONIC raise to maxPersisted+1 — only ever moves the counter UP.
+// A non-atomic GET-then-SET is unsafe under concurrent boot (`--scale app=N`) and
+// under failover: an instance/master that already advanced past this value must
+// not be stomped back down. The Lua reads+compares+writes in one step, so a stale
+// caller that sees a higher live counter leaves it alone.
+const RAISE_COUNTER_LUA = `
+local cur = tonumber(redis.call('GET', KEYS[1]) or '0')
+if tonumber(ARGV[1]) > cur then redis.call('SET', KEYS[1], ARGV[1]) end
+return redis.call('GET', KEYS[1])
+`;
+
+/**
+ * Fast-forward the Redis counter past the highest PERSISTED link id, so the next
+ * INCR can never collide with an existing link. Runs at startup AND on every
+ * Sentinel failover (see registerFailoverRecovery): a promoted replica can be
+ * missing the old master's last few INCRs (async replication), and without this
+ * the counter would hand those ids out a second time.
+ */
+async function recoverCounter(): Promise<void> {
+  const res = await getPool().query<{ max: string | null }>(
+    'SELECT MAX(link_id) AS max FROM links_code_lookup',
+  );
+  const raw = res.rows[0]?.max;
+  if (raw == null) return; // no links yet — nothing to fast-forward past
+  await getRedis().eval(RAISE_COUNTER_LUA, 1, COUNTER_KEY, (BigInt(raw) + 1n).toString());
+}
+
+// Post-failover gate. ioredis (Sentinel mode) re-emits 'ready' after it reconnects
+// to a newly promoted master. We re-run recovery then, and getNextId() awaits this
+// barrier so it never INCRs a stale counter on the new master.
+let recoveryBarrier: Promise<void> | null = null;
+
+function registerFailoverRecovery(redis: ReturnType<typeof getRedis>): void {
+  // Re-run recovery on EVERY 'ready'. ioredis re-emits it after reconnecting to a
+  // newly promoted master. We deliberately do NOT try to skip the first (startup)
+  // 'ready': this listener is attached only after buildApp()'s async plugin/route
+  // registration, so the startup 'ready' can fire BEFORE the listener exists — a
+  // "skip first" heuristic would then silently disarm the FIRST real failover.
+  // recoverCounter() is idempotent + monotonic, so a redundant startup run is free.
+  //
+  // CAVEAT (why the redis backend is "safe in practice", not absolute): ioredis
+  // drains its offline queue synchronously on reconnect, one tick BEFORE this
+  // 'ready' listener fires, so an INCR queued during the outage can land on a
+  // not-yet-fast-forwarded promoted replica. COUNTER_BACKEND=postgres has no such
+  // window and is the default — see docs/ha-redis-sentinel.md.
+  redis.on('ready', () => {
+    if (recoveryBarrier) return; // coalesce: one in-flight recovery is enough
+    recoveryBarrier = recoverCounter()
+      .catch((err) => {
+        // Surface it: if Postgres is also down the barrier still clears, and
+        // getNextId would resume INCRing a possibly-stale counter with no signal.
+        counterLog?.error({ err }, 'counter: post-failover recovery failed');
+      })
+      .finally(() => {
+        recoveryBarrier = null;
+      });
+  });
+}
+
 async function initRedisCounter(): Promise<void> {
   const redis = getRedis();
 
@@ -83,43 +152,23 @@ async function initRedisCounter(): Promise<void> {
     await redis.set(COUNTER_KEY, COUNTER_OFFSET.toString(), 'NX');
   } catch (err) {
     throw new Error(
-      `Klipo counter: failed to seed "${COUNTER_KEY}" — Redis unavailable at ${env.REDIS_URL}. ` +
-        `Cause: ${describe(err)}`,
+      `Klipo counter: failed to seed "${COUNTER_KEY}" — Redis unavailable. Cause: ${describe(err)}`,
     );
   }
 
-  // Recovery: if Redis lost data and was reseeded below the highest ID we've
-  // already persisted, fast-forward past it so we can never reissue an ID.
-  let maxPersisted: bigint | null;
+  // Recovery: if Redis lost data / was reseeded below the highest persisted ID
+  // (data loss OR a failover to a lagging replica), fast-forward past it.
   try {
-    const res = await getPool().query<{ max: string | null }>(
-      'SELECT MAX(link_id) AS max FROM links_code_lookup',
-    );
-    const raw = res.rows[0]?.max;
-    maxPersisted = raw != null ? BigInt(raw) : null;
+    await recoverCounter();
   } catch (err) {
     throw new Error(
-      `Klipo counter: recovery query against links_code_lookup failed — Postgres unavailable ` +
+      `Klipo counter: startup recovery against links_code_lookup failed — Postgres unavailable ` +
         `at ${env.DATABASE_URL}. Cause: ${describe(err)}`,
     );
   }
 
-  if (maxPersisted !== null) {
-    // Atomic, MONOTONIC raise to maxPersisted+1 — only ever moves the counter UP.
-    // A non-atomic GET-then-SET is unsafe under concurrent boot (e.g.
-    // `docker compose up --scale app=N`): an instance that already recovered and
-    // started serving may have INCR'd past this value, and a stale booter's SET
-    // could stomp it back down and reissue IDs. The Lua reads+compares+writes in
-    // one step, so a late booter that sees a higher live counter leaves it alone.
-    await redis.eval(
-      `local cur = tonumber(redis.call('GET', KEYS[1]) or '0')
-       if tonumber(ARGV[1]) > cur then redis.call('SET', KEYS[1], ARGV[1]) end
-       return redis.call('GET', KEYS[1])`,
-      1,
-      COUNTER_KEY,
-      (maxPersisted + 1n).toString(),
-    );
-  }
+  // From now on, follow Sentinel failovers automatically.
+  registerFailoverRecovery(redis);
 }
 
 // -----------------------------------------------------------------------------
@@ -139,6 +188,35 @@ async function initPostgresCounter(): Promise<void> {
     throw new Error(
       `Klipo counter: cannot initialize Postgres backend — Postgres unavailable at ` +
         `${env.DATABASE_URL} or schema not applied. Cause: ${describe(err)}`,
+    );
+  }
+
+  // Align the sequence with the highest persisted id so nextval() can NEVER
+  // collide with an existing link — covering a fresh sequence, a Postgres restore,
+  // AND a switch from the Redis counter (the sequence sat UNUSED while ids were
+  // minted from Redis, so it may carry a stale START far from the real ids).
+  //   - is_called = false  → the sequence never issued anything, so its value is
+  //     just a nominal START. Reset it to MAX(link_id) → next is MAX+1 (small,
+  //     consecutive ids), regardless of whatever START the schema declared.
+  //   - is_called = true   → genuinely in use; only raise via GREATEST(last_value,
+  //     MAX) so we never lower it (which keeps concurrent boots / `--scale app=N`
+  //     safe — a peer that already advanced it isn't stomped).
+  // Skipped when there are no links (WHERE maxid IS NOT NULL) so a fresh DB still
+  // issues nextval()=1. Assumes COUNTER_OFFSET=0 (the supported value: link_id ==
+  // sequence value).
+  try {
+    await getPool().query(
+      `SELECT setval('link_id_seq',
+                CASE WHEN s.is_called THEN GREATEST(s.last_value, m.maxid)
+                     ELSE m.maxid END)
+         FROM link_id_seq s,
+              (SELECT MAX(link_id) AS maxid FROM links_code_lookup) m
+        WHERE m.maxid IS NOT NULL`,
+    );
+  } catch (err) {
+    throw new Error(
+      `Klipo counter: failed to fast-forward link_id_seq past existing links — ` +
+        `Postgres unavailable at ${env.DATABASE_URL}. Cause: ${describe(err)}`,
     );
   }
 }

@@ -15,6 +15,15 @@ const envSchema = z.object({
   // 100). e.g. 3 replicas × 10 = 30 (fine); raise max_connections before ~9.
   PG_POOL_MAX: z.coerce.number().int().positive().default(10),
   REDIS_URL: z.string().url(),
+  // Redis Sentinel HA. When set, a comma-separated "host:port" list of Sentinel
+  // nodes — the client then connects VIA Sentinel and follows master failover,
+  // ignoring REDIS_URL. Leave UNSET for a single-node Redis (local dev / tests),
+  // where REDIS_URL is used directly.
+  //   e.g. REDIS_SENTINELS=redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
+  REDIS_SENTINELS: z.string().optional(),
+  // The monitored master's name; MUST match `sentinel monitor <name>` in
+  // redis/sentinel.conf. Only used when REDIS_SENTINELS is set.
+  REDIS_MASTER_NAME: z.string().min(1).default('klip-master'),
   REDIS_URL_TTL: z.coerce.number().int().nonnegative().default(86400),
 
   COUNTER_BACKEND: z.enum(['redis', 'postgres']).default('redis'),

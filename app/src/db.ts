@@ -20,13 +20,41 @@ export function getPool(): Pool {
   return pool;
 }
 
-/** Redis client (created on first use). */
+/**
+ * Redis client (created on first use). Two modes:
+ *   - Sentinel (REDIS_SENTINELS set) → connects through Sentinel and transparently
+ *     follows master failover. ioredis re-resolves the master from Sentinel on
+ *     every (re)connect, so an INCR/GET after a failover lands on the NEW master.
+ *   - Single-node (default) → REDIS_URL directly (local dev / tests).
+ */
 export function getRedis(): Redis {
   if (!redis) {
-    redis = new Redis(env.REDIS_URL, {
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: true,
-    });
+    if (env.REDIS_SENTINELS) {
+      const sentinels = env.REDIS_SENTINELS.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((hostPort) => {
+          const idx = hostPort.lastIndexOf(':');
+          const host = idx === -1 ? hostPort : hostPort.slice(0, idx);
+          const port = idx === -1 ? 26379 : Number(hostPort.slice(idx + 1)) || 26379;
+          return { host, port };
+        });
+      redis = new Redis({
+        sentinels,
+        name: env.REDIS_MASTER_NAME,
+        // Back off on a flapping connection; cap at 2s so we reconnect promptly
+        // once the new master is elected.
+        retryStrategy: (times) => Math.min(times * 100, 2000),
+        sentinelRetryStrategy: (times) => Math.min(times * 100, 2000),
+        maxRetriesPerRequest: 3,
+        enableReadyCheck: true,
+      });
+    } else {
+      redis = new Redis(env.REDIS_URL, {
+        maxRetriesPerRequest: 3,
+        enableReadyCheck: true,
+      });
+    }
   }
   return redis;
 }
