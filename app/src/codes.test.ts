@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // Env must be set before codes.ts loads (it reads HASHIDS_SALT at import time).
 process.env.HASHIDS_SALT ??= 'test-salt-please-change-me';
-process.env.COUNTER_OFFSET ??= '14776336';
+process.env.COUNTER_OFFSET ??= '0';
 process.env.SESSION_SECRET ??= 'test-session-secret-0123456789-abcdef';
 
 let codes: typeof import('./codes.js');
@@ -24,6 +24,15 @@ test('all minted codes are at least 4 characters', () => {
   for (let i = 0n; i < 1000n; i++) {
     const code = codes.mintCode(i);
     assert.ok(code.length >= 4, `code "${code}" (seq ${i}) is shorter than 4 chars`);
+  }
+});
+
+test('early codes are EXACTLY 4 chars — a large offset must not re-inflate length', () => {
+  // Regression guard: the 4-char floor comes from Hashids minLength, and the
+  // counter offset must stay small (0) so early codes don't grow to 5–7 chars.
+  for (const seq of [0n, 1n, 2n, 10n, 100n]) {
+    const code = codes.mintCode(seq);
+    assert.equal(code.length, 4, `code "${code}" (seq ${seq}) is ${code.length} chars, expected 4`);
   }
 });
 

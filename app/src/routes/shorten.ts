@@ -3,10 +3,11 @@ import { z } from 'zod';
 import { getNextId } from '../counter';
 import { mintCode, COUNTER_OFFSET } from '../codes';
 import { getPool } from '../db';
-import { env } from '../env';
+import { SHORT_BASE_URL } from '../env';
 import { setCachedUrl } from '../cache';
 import { validateUrl, UrlSafetyError, urlSafetyResponse } from '../security/urlSafety';
 import { rateLimit } from '../security/rateLimit';
+import { shortenTotal } from '../metrics';
 
 /**
  * POST /api/v1/shorten — mint a short code and persist a link.
@@ -177,8 +178,9 @@ async function handleShorten(request: FastifyRequest, reply: FastifyReply): Prom
     }
 
     // 7. Success.
+    shortenTotal.inc({ type: body.customAlias ? 'custom_alias' : 'generated' });
     return reply.code(201).send({
-      shortUrl: `https://${env.SHORT_DOMAIN}/${shortCode}`,
+      shortUrl: `${SHORT_BASE_URL}/${shortCode}`,
       code: shortCode,
       longUrl: body.url,
       createdAt: createdAt.toISOString(),

@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db';
-import { env } from '../env';
+import { SHORT_BASE_URL } from '../env';
 import { setCachedUrl, setTombstone, invalidateCachedUrl } from '../cache';
 import { requireAuth } from '../middleware/authenticate';
 import { validateUrl, UrlSafetyError, urlSafetyResponse } from '../security/urlSafety';
@@ -99,7 +99,7 @@ async function handleListLinks(request: FastifyRequest, reply: FastifyReply): Pr
 
   const links = res.rows.map((r) => ({
     code: r.short_code,
-    shortUrl: `https://${env.SHORT_DOMAIN}/${r.short_code}`,
+    shortUrl: `${SHORT_BASE_URL}/${r.short_code}`,
     longUrl: r.long_url,
     createdAt: r.created_at.toISOString(),
     expiresAt: r.expires_at ? r.expires_at.toISOString() : null,
@@ -244,7 +244,7 @@ async function handlePatchLink(request: FastifyRequest, reply: FastifyReply): Pr
 
   return reply.code(200).send({
     code,
-    shortUrl: `https://${env.SHORT_DOMAIN}/${code}`,
+    shortUrl: `${SHORT_BASE_URL}/${code}`,
     longUrl: newLongUrl,
     createdAt: link.created_at.toISOString(),
     expiresAt: newExpiresAt ? newExpiresAt.toISOString() : null,

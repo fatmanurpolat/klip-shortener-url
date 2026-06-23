@@ -17,11 +17,12 @@ import Hashids from 'hashids';
 export const ALPHABET =
   '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-// Offset applied to the raw counter value before encoding. Must match the
-// value used by the counter module (env COUNTER_OFFSET, default 62^4) so that
-// codes and IDs line up across the system.
+// Offset applied to the raw counter value before encoding. Must match the value
+// used by the counter module (env COUNTER_OFFSET). Default 0: the 4-char floor
+// comes from Hashids MIN_LENGTH below, NOT from a large offset — a large offset
+// only pre-inflates the encoded integer and makes codes longer.
 export const COUNTER_OFFSET: bigint = BigInt(
-  process.env.COUNTER_OFFSET ?? '14776336',
+  process.env.COUNTER_OFFSET ?? '0',
 );
 
 const salt = process.env.HASHIDS_SALT;
@@ -38,7 +39,7 @@ const hashids = new Hashids(salt, MIN_LENGTH, ALPHABET);
 /**
  * Turn a raw counter value into a short code.
  * @param seq the counter value as returned by getNextId()
- * @returns a base62 code, always >= 4 chars (minLength + offset)
+ * @returns a base62 code, always >= 4 chars (guaranteed by Hashids MIN_LENGTH)
  */
 export function mintCode(seq: bigint): string {
   const id = COUNTER_OFFSET + seq;
