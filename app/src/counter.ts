@@ -1,18 +1,27 @@
 import { env } from './env';
 import { getPool, getRedis } from './db';
+import { nextSnowflakeId, initSnowflake, SNOWFLAKE_EPOCH, MAX_MACHINE_ID } from './snowflake';
 
 /**
  * Atomic unique-ID counter. Every short link is assigned a strictly
- * increasing integer ID drawn from here. Two backends are supported,
+ * increasing integer ID drawn from here. Three backends are supported,
  * selected by COUNTER_BACKEND:
  *
- *   - "redis"    : INCR on a single key (atomic across processes), with a
- *                  startup recovery step so IDs are never reissued after a
- *                  Redis data loss.
- *   - "postgres" : nextval() on a dedicated sequence (no Redis involved).
+ *   - "redis"     : INCR on a single key (atomic across processes), with a
+ *                   startup recovery step so IDs are never reissued after a
+ *                   Redis data loss.
+ *   - "postgres"  : nextval() on a dedicated sequence (no Redis involved).
+ *   - "snowflake" : local time-based id stamped with this node's MACHINE_ID, so
+ *                   replicas mint ids independently with NO central counter (see
+ *                   snowflake.ts). Requires a UNIQUE MACHINE_ID per replica.
  *
- * Neither backend can return a duplicate, even under heavy concurrency:
- * Redis INCR and Postgres nextval() are both atomic.
+ * redis INCR and postgres nextval() are atomic; snowflake relies on a per-node
+ * MACHINE_ID for cross-node uniqueness (NOT shared state).
+ *
+ * NOTE on ordering: redis/postgres ids are globally strictly-increasing. Snowflake
+ * ids are strictly-increasing WITHIN one process; across nodes they order by the
+ * (timestamp, machine, sequence) bit value, which is NOT time-causal under clock
+ * skew. All three never repeat an id (snowflake only if MACHINE_IDs are unique).
  */
 
 // The counter's starting value (default 0). NOTE: code WIDTH is controlled by
@@ -30,7 +39,11 @@ function describe(err: unknown): string {
 
 // Optional structured logger (the app's pino instance), set by initCounter. Used
 // to surface post-failover recovery failures on the redis backend.
-type CounterLog = { error: (obj: unknown, msg?: string) => void };
+type CounterLog = {
+  error: (obj: unknown, msg?: string) => void;
+  warn: (obj: unknown, msg?: string) => void;
+  info: (obj: unknown, msg?: string) => void;
+};
 let counterLog: CounterLog | null = null;
 
 /**
@@ -40,6 +53,10 @@ let counterLog: CounterLog | null = null;
  */
 export async function initCounter(log?: CounterLog): Promise<void> {
   counterLog = log ?? null;
+  if (env.COUNTER_BACKEND === 'snowflake') {
+    initSnowflakeCounter();
+    return;
+  }
   if (env.COUNTER_BACKEND === 'redis') {
     await initRedisCounter();
   } else {
@@ -47,10 +64,45 @@ export async function initCounter(log?: CounterLog): Promise<void> {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Snowflake backend — time-based, no central store, no seeding/recovery. Just
+// build the generator (validates MACHINE_ID) and warn LOUDLY if it's the shared
+// default, since duplicate MACHINE_IDs across replicas would mint duplicate ids.
+// -----------------------------------------------------------------------------
+function initSnowflakeCounter(): void {
+  // Enforce (not just document) COUNTER_OFFSET=0: shorten stores link_id = id +
+  // COUNTER_OFFSET, so a non-zero offset on a full 63-bit snowflake id would
+  // overflow BIGINT near the timestamp ceiling AND be double-applied by mintCode.
+  if (BigInt(env.COUNTER_OFFSET) !== 0n) {
+    throw new Error(
+      `Klipo counter: COUNTER_BACKEND=snowflake requires COUNTER_OFFSET=0 (got ${env.COUNTER_OFFSET}) — ` +
+        `a non-zero offset corrupts/overflows the 63-bit snowflake id.`,
+    );
+  }
+  initSnowflake(); // constructs the default generator → throws if MACHINE_ID is out of range
+  if (BigInt(env.MACHINE_ID) === 0n) {
+    counterLog?.warn(
+      { machineId: env.MACHINE_ID },
+      `snowflake: MACHINE_ID is 0 (default). EVERY app replica MUST have a UNIQUE ` +
+        `MACHINE_ID (0-${MAX_MACHINE_ID}) — \`docker compose --scale app=N\` shares one env, ` +
+        `so without a per-replica MACHINE_ID two replicas WILL mint duplicate ids.`,
+    );
+  }
+  counterLog?.info(
+    { machineId: env.MACHINE_ID, epoch: SNOWFLAKE_EPOCH.toString() },
+    'snowflake id generator ready',
+  );
+}
+
 /**
  * Return the next unique ID. One call per shortened link. Never duplicates.
  */
 export async function getNextId(): Promise<bigint> {
+  if (env.COUNTER_BACKEND === 'snowflake') {
+    // Local, time-based — no Redis/Postgres round-trip. Throws only if the clock
+    // ran backwards; the caller surfaces a 503 and retries once it recovers.
+    return nextSnowflakeId();
+  }
   if (env.COUNTER_BACKEND === 'redis') {
     // If a Sentinel failover just promoted a replica, wait for the counter to be
     // fast-forwarded past the highest persisted id before INCRing — otherwise we

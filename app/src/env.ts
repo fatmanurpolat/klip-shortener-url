@@ -26,7 +26,11 @@ const envSchema = z.object({
   REDIS_MASTER_NAME: z.string().min(1).default('klip-master'),
   REDIS_URL_TTL: z.coerce.number().int().nonnegative().default(86400),
 
-  COUNTER_BACKEND: z.enum(['redis', 'postgres']).default('redis'),
+  COUNTER_BACKEND: z.enum(['redis', 'postgres', 'snowflake']).default('redis'),
+  // Snowflake node id (only used when COUNTER_BACKEND=snowflake). MUST be UNIQUE
+  // per app replica (0-1023) — it's stamped into every id for cross-node
+  // uniqueness, so two replicas sharing a MACHINE_ID will mint duplicate ids.
+  MACHINE_ID: z.coerce.number().int().min(0).max(1023).default(0),
   // Counter start value. 0 keeps short codes minimal — Hashids minLength (4) is
   // what guarantees the 4-char floor, NOT the offset. (A large offset pre-inflates
   // the encoded integer and produces longer codes.)
