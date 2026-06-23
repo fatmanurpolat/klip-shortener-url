@@ -223,3 +223,38 @@ test('postgres backend fast-forwards link_id_seq past existing links on init', a
     env.COUNTER_BACKEND = original as 'redis' | 'postgres';
   }
 });
+
+test('snowflake backend: getNextId mints unique, strictly-increasing 63-bit ids', async () => {
+  const env = (await import('./env.js')).env;
+  const origBackend = env.COUNTER_BACKEND;
+  const origOffset = env.COUNTER_OFFSET;
+  env.COUNTER_BACKEND = 'snowflake';
+  env.COUNTER_OFFSET = 0; // snowflake mandates offset 0
+  try {
+    await counter.initCounter(); // no Redis/Postgres needed for snowflake
+    const ids: bigint[] = [];
+    for (let i = 0; i < 500; i++) ids.push(await counter.getNextId());
+    assert.equal(new Set(ids.map(String)).size, 500, 'all snowflake ids unique');
+    assert.ok(ids[0] > 1n << 40n, 'snowflake ids are timestamp-shifted (large)');
+    for (let i = 1; i < ids.length; i++) {
+      assert.ok(ids[i] > ids[i - 1], `id ${ids[i]} must exceed previous ${ids[i - 1]}`);
+    }
+  } finally {
+    env.COUNTER_BACKEND = origBackend as 'redis' | 'postgres' | 'snowflake';
+    env.COUNTER_OFFSET = origOffset;
+  }
+});
+
+test('snowflake backend: initCounter rejects a non-zero COUNTER_OFFSET', async () => {
+  const env = (await import('./env.js')).env;
+  const origBackend = env.COUNTER_BACKEND;
+  const origOffset = env.COUNTER_OFFSET;
+  env.COUNTER_BACKEND = 'snowflake';
+  env.COUNTER_OFFSET = 5;
+  try {
+    await assert.rejects(() => counter.initCounter(), /COUNTER_OFFSET=0/);
+  } finally {
+    env.COUNTER_BACKEND = origBackend as 'redis' | 'postgres' | 'snowflake';
+    env.COUNTER_OFFSET = origOffset;
+  }
+});
