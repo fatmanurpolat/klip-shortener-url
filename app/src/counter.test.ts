@@ -33,6 +33,15 @@ function makeFakeRedis() {
     async get(key: string) {
       return store.has(key) ? store.get(key)! : null;
     },
+    // Mirrors the monotonic-raise Lua in initRedisCounter: only ever moves the
+    // key UP to ARGV[1]. Body runs to completion before yielding, so it's atomic
+    // (the real Redis EVAL guarantee). Signature: eval(script, numKeys, key, arg).
+    async eval(_script: string, _numKeys: number, key: string, arg: string) {
+      const cur = store.has(key) ? BigInt(store.get(key)!) : 0n;
+      const target = BigInt(arg);
+      if (target > cur) store.set(key, target.toString());
+      return store.get(key)!;
+    },
   };
 }
 

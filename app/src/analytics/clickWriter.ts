@@ -53,7 +53,46 @@ export function initClickWriter(log?: FastifyBaseLogger): void {
   timer.unref();
 }
 
-async function flush(): Promise<void> {
+/**
+ * Stop the flush interval and drain the queue ONE LAST TIME. Call on shutdown
+ * (before the DB pool closes) so a graceful stop — including a scale-down or
+ * rolling deploy of a replica — doesn't silently drop up to FLUSH_INTERVAL_MS of
+ * queued clicks. Idempotent and never throws (flush swallows its own errors).
+ */
+export async function stopClickWriter(): Promise<void> {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  // Drain to a quiescent state before the pool closes. Three things can be in
+  // flight at shutdown, and all must settle or their clicks are lost:
+  //   1. A periodic flush whose writeBatch is mid-transaction — `flush()` is
+  //      coalesced, so this await returns that SAME in-flight promise and we wait
+  //      for its COMMIT instead of racing closeDb()/process.exit() (the bug this
+  //      fixes: a fire-and-forget `void flush()` was getting cut off mid-write).
+  //   2. setImmediate(recordClick / audit) callbacks queued but not yet run — the
+  //      yield lets every already-scheduled one run (FIFO) and enqueue.
+  //   3. Whatever those callbacks just enqueued — the final flush writes it.
+  await flush();
+  await new Promise((resolve) => setImmediate(resolve));
+  await flush();
+}
+
+// Coalesced flush: concurrent callers (the interval + a shutdown drain) share one
+// in-flight write rather than each swapping the queue independently. This is what
+// lets stopClickWriter AWAIT a periodic flush that's already mid-transaction.
+let pendingFlush: Promise<void> | null = null;
+
+function flush(): Promise<void> {
+  if (!pendingFlush) {
+    pendingFlush = doFlush().finally(() => {
+      pendingFlush = null;
+    });
+  }
+  return pendingFlush;
+}
+
+async function doFlush(): Promise<void> {
   if (queue.length === 0) return;
   // Atomic swap: new enqueues land in a fresh array while we write this batch.
   const batch = queue;

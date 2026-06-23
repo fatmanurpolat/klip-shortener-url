@@ -16,7 +16,7 @@ import { registerRedirectRoutes } from './routes/redirect';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAdminRoutes } from './routes/admin';
 import { registerAuthHook } from './middleware/authenticate';
-import { initClickWriter } from './analytics/clickWriter';
+import { initClickWriter, stopClickWriter } from './analytics/clickWriter';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -92,6 +92,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   initClickWriter(app.log);
 
   app.addHook('onClose', async () => {
+    // Drain queued clicks BEFORE the pool closes (the flush needs it). Keeps a
+    // graceful stop / scale-down / rolling deploy from dropping buffered clicks.
+    await stopClickWriter();
     await closeDb();
   });
 

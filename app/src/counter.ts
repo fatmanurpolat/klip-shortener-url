@@ -105,11 +105,20 @@ async function initRedisCounter(): Promise<void> {
   }
 
   if (maxPersisted !== null) {
-    const currentRaw = await redis.get(COUNTER_KEY);
-    const current = currentRaw != null ? BigInt(currentRaw) : COUNTER_OFFSET;
-    if (maxPersisted > current) {
-      await redis.set(COUNTER_KEY, (maxPersisted + 1n).toString());
-    }
+    // Atomic, MONOTONIC raise to maxPersisted+1 — only ever moves the counter UP.
+    // A non-atomic GET-then-SET is unsafe under concurrent boot (e.g.
+    // `docker compose up --scale app=N`): an instance that already recovered and
+    // started serving may have INCR'd past this value, and a stale booter's SET
+    // could stomp it back down and reissue IDs. The Lua reads+compares+writes in
+    // one step, so a late booter that sees a higher live counter leaves it alone.
+    await redis.eval(
+      `local cur = tonumber(redis.call('GET', KEYS[1]) or '0')
+       if tonumber(ARGV[1]) > cur then redis.call('SET', KEYS[1], ARGV[1]) end
+       return redis.call('GET', KEYS[1])`,
+      1,
+      COUNTER_KEY,
+      (maxPersisted + 1n).toString(),
+    );
   }
 }
 

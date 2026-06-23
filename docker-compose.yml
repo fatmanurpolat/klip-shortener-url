@@ -30,6 +30,12 @@ services:
       - klip_net
 
   app:
+    # Horizontally scalable: the app is stateless (Redis-backed cache/counter/
+    # rate-limits, stateless JWT sessions), and this service has NO container_name
+    # and binds NO host port (`expose`, not `ports`), so multiple replicas can run
+    # side by side. nginx load-balances them via Docker DNS (see nginx/conf.d).
+    #   Scale:  docker compose up -d --scale app=3
+    # Mind Postgres max_connections: total ≈ replicas × PG_POOL_MAX (see deploy.md).
     build:
       context: ./app
     restart: unless-stopped

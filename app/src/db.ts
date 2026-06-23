@@ -15,7 +15,7 @@ let redis: Redis | null = null;
 /** Postgres connection pool (created on first use). */
 export function getPool(): Pool {
   if (!pool) {
-    pool = new Pool({ connectionString: env.DATABASE_URL, max: 10 });
+    pool = new Pool({ connectionString: env.DATABASE_URL, max: env.PG_POOL_MAX });
   }
   return pool;
 }

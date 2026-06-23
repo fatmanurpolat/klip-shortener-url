@@ -55,16 +55,18 @@ opt in deliberately by removing the `Cache-Control: no-store` on the 302 path in
 clicks per window. This is an **opt-in** decision — it is intentionally OFF by default so
 analytics stay exact.
 
-## Deployment prerequisite (current gap)
+## Deployment notes
 
-`docker-compose.yml` mounts only `nginx/nginx.conf` into the nginx container — it does **not**
-mount `nginx/conf.d/`, yet `nginx.conf` does `include /etc/nginx/conf.d/*.conf`. So in the
-current compose the container runs the stock `default.conf` and **`klip.conf` (this cache, the
-upstream, TLS, the `/:code` proxy) is not loaded at all**. To activate it, the deploy must:
+`docker-compose.yml` mounts `./nginx/conf.d:/etc/nginx/conf.d:ro` (the production TLS
+`klip.conf`), and `nginx.conf` does `include /etc/nginx/conf.d/*.conf`, so this cache + the
+DNS-discovered upstream + the `/:code` proxy **are loaded by default**.
 
-1. Mount the config: add `- ./nginx/conf.d:/etc/nginx/conf.d:ro` to the nginx service volumes.
-2. Provide the TLS certs the `:443` block references (`/etc/nginx/certs/fullchain.pem`,
-   `privkey.pem`) — or drop the TLS block for plain-HTTP local testing.
+- **Local dev:** `docker-compose.override.yml` shadows that mount with `./nginx/conf.d.local`
+  (HTTP-only, no certs) so the stack comes up on `http://localhost` without TLS material.
+- **Production:** the `:443` block in `conf.d/klip.conf` needs real certs — mount them by
+  uncommenting `- ./nginx/certs:/etc/nginx/certs:ro` and providing `fullchain.pem` /
+  `privkey.pem` (e.g. via certbot). The `:80` block already serves the ACME HTTP-01 challenge.
 
-This is left as a deliberate infra step (it touches the outward-facing compose + needs certs),
-not changed automatically.
+Both configs use Docker-DNS service discovery for the app upstream (a variable `proxy_pass` +
+`resolver 127.0.0.11`), so `docker compose up --scale app=N` is load-balanced with no nginx
+reload — see `docs/deploy.md`.
