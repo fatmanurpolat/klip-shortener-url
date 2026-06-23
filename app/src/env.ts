@@ -9,6 +9,11 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
   DATABASE_URL: z.string().url(),
+  // Postgres pool size PER APP INSTANCE. Horizontal scaling multiplies this:
+  // total server connections ≈ (replica count) × PG_POOL_MAX, so keep
+  // replicas × PG_POOL_MAX + headroom under Postgres max_connections (default
+  // 100). e.g. 3 replicas × 10 = 30 (fine); raise max_connections before ~9.
+  PG_POOL_MAX: z.coerce.number().int().positive().default(10),
   REDIS_URL: z.string().url(),
   REDIS_URL_TTL: z.coerce.number().int().nonnegative().default(86400),
 
