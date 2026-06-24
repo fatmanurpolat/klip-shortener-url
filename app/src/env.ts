@@ -55,6 +55,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v === 'true'),
 
+  // CORS allowlist (comma-separated origins). When SET, only these origins are
+  // allowed (with credentials). When UNSET, the API reflects the request origin —
+  // convenient for local dev, but you SHOULD set an explicit allowlist in
+  // production so a hostile site can't make credentialed cross-origin calls.
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+
   // Secret for signing magic-link and session JWTs. Required (app refuses to
   // start without it). Use a long, random string in every environment.
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
@@ -65,7 +71,38 @@ const envSchema = z.object({
 
   RAW_CLICK_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(90),
   LINK_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(120),
+}).superRefine((cfg, ctx) => {
+  // PRODUCTION HARDENING: refuse to boot with placeholder/default signing secrets
+  // or a CHANGE_ME database password. They pass the length checks above but would
+  // ship a remotely-forgeable session/admin secret + a publicly-known DB password
+  // (the two CRITICALs from the security audit). Dev/test are exempt so local
+  // workflows keep using stub values.
+  if (cfg.NODE_ENV !== 'production') return;
+  const flag = (
+    field: 'SESSION_SECRET' | 'HASHIDS_SALT' | 'ADMIN_SECRET' | 'DATABASE_URL',
+    value: string | undefined,
+  ): void => {
+    if (looksLikePlaceholderSecret(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `${field} looks like a placeholder/default — set a real, secret value before running in production`,
+      });
+    }
+  };
+  flag('SESSION_SECRET', cfg.SESSION_SECRET);
+  flag('HASHIDS_SALT', cfg.HASHIDS_SALT);
+  flag('ADMIN_SECRET', cfg.ADMIN_SECRET);
+  flag('DATABASE_URL', cfg.DATABASE_URL);
 });
+
+/** True if a secret/URL still carries a well-known placeholder/default token. */
+export function looksLikePlaceholderSecret(value: string | undefined): boolean {
+  // `your[_-]` is intentionally UNanchored so an embedded placeholder (e.g. a
+  // DATABASE_URL password `…:your_pass@…`) is also caught, not just values that
+  // start with it.
+  return !!value && /change[_-]?me|placeholder|your[_-]|dev[_-]?klip|test[_-]?(secret|salt)/i.test(value);
+}
 
 const parsed = envSchema.safeParse(process.env);
 

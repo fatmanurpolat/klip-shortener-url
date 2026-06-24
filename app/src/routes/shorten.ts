@@ -1,53 +1,21 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { getNextId } from '../counter';
-import { mintCode, COUNTER_OFFSET } from '../codes';
-import { getPool } from '../db';
 import { SHORT_BASE_URL } from '../env';
-import { setCachedUrl } from '../cache';
-import { validateUrl, UrlSafetyError, urlSafetyResponse } from '../security/urlSafety';
+import { urlSafetyResponse } from '../security/urlSafety';
 import { rateLimit, getClientIp } from '../security/rateLimit';
 import { ipPrefix } from '../security/ipPrefix';
 import { shortenTotal } from '../metrics';
-
-// Active-link quotas (not disabled, not expired). Anonymous are keyed by IP
-// prefix; authenticated by owner.
-const ANON_QUOTA = 100;
-const AUTH_QUOTA = 10_000;
-
-/** True if the owner (or anonymous IP prefix) is at/over their active-link quota. */
-async function isOverQuota(ownerId: string | null, ipPref: string): Promise<boolean> {
-  const pool = getPool();
-  const activeClause = 'NOT is_disabled AND (expires_at IS NULL OR expires_at > now())';
-  if (ownerId) {
-    const r = await pool.query<{ n: string }>(
-      `SELECT count(*)::bigint AS n FROM links WHERE owner_id = $1 AND ${activeClause}`,
-      [ownerId],
-    );
-    return Number(r.rows[0].n) >= AUTH_QUOTA;
-  }
-  // Anonymous: can only enforce the quota when we have a usable IP prefix.
-  if (!ipPref) return false;
-  const r = await pool.query<{ n: string }>(
-    `SELECT count(*)::bigint AS n FROM links WHERE owner_id IS NULL AND ip_prefix = $1 AND ${activeClause}`,
-    [ipPref],
-  );
-  return Number(r.rows[0].n) >= ANON_QUOTA;
-}
+import { getShortenLinkUseCase } from '../composition';
+import type { ShortenError } from '../application/shorten/ShortenLinkUseCase';
 
 /**
- * POST /api/v1/shorten — mint a short code and persist a link.
+ * POST /api/v1/shorten — HTTP adapter (hexagonal).
  *
- * Write path: validate → (auth gate for private) → allocate a unique ID →
- * persist link + code lookup in ONE explicit transaction (BEGIN/COMMIT) →
- * best-effort cache → 201. The commit is what makes the rows visible to
- * other connections (e.g. DBeaver) the instant the request returns.
+ * Thin: validate the body (Zod) and build the input, delegate the whole write
+ * path to ShortenLinkUseCase (which owns the policy + orchestration), then map
+ * its typed Result back to the exact HTTP responses this endpoint promises.
+ * All persistence/cache/audit/id/url-safety logic lives behind ports.
  */
-
-const RESERVED_WORDS = new Set([
-  'api', 'v1', 'admin', 'login', 'signup', 'logout', 'dashboard', 'settings',
-  'account', 'health', 'healthz', 'assets', 'static', 'favicon.ico', 'robots.txt',
-]);
 
 const ALIAS_RE = /^[0-9A-Za-z_-]{3,32}$/;
 
@@ -56,7 +24,10 @@ const bodySchema = z.object({
     .string()
     .url()
     .max(2048)
-    .refine((u) => /^https?:\/\//i.test(u), 'only http/https allowed'),
+    .refine((u) => /^https?:\/\//i.test(u), 'only http/https allowed')
+    // Reject raw control chars (CR/LF/Tab/NUL/DEL): valid URLs percent-encode
+    // them; storing them un-normalized invites header/log issues downstream.
+    .refine((u) => !/[\x00-\x1f\x7f]/.test(u), 'control characters are not allowed'),
   customAlias: z.string().regex(ALIAS_RE).optional(),
   expiresAt: z
     .string()
@@ -67,11 +38,7 @@ const bodySchema = z.object({
   analytics: z.boolean().default(true), // false → prefer_301 = true in DB
 });
 
-/**
- * Owner of the link, or null for anonymous requests. Populated by the auth
- * preHandler (token verification) once that lands; until then every request
- * is anonymous, so `private: true` always yields 401 — which is correct.
- */
+/** Owner of the link, or null for anonymous requests (set by the auth hook). */
 function getOwnerId(request: FastifyRequest): string | null {
   return request.user?.userId ?? null;
 }
@@ -98,161 +65,78 @@ function sendValidationError(error: z.ZodError, reply: FastifyReply): FastifyRep
   });
 }
 
+/** Map a use-case ShortenError to the exact HTTP status/body (unchanged contract). */
+function sendShortenError(error: ShortenError, reply: FastifyReply): FastifyReply {
+  switch (error.kind) {
+    case 'auth_required':
+      return reply.code(401).send({ error: 'auth_required', message: 'Sign in to create a private link.' });
+    case 'reserved_alias':
+      return reply.code(400).send({ error: 'reserved_alias', message: 'This alias is reserved and cannot be used.' });
+    case 'unsafe_url': {
+      const { status, body } = urlSafetyResponse(error.error);
+      return reply.code(status).send(body);
+    }
+    case 'quota_exceeded':
+      return reply.code(429).send({ error: 'quota_exceeded', message: 'Link quota reached.' });
+    case 'quota_unavailable':
+      return reply.code(503).send({ error: 'quota_check_unavailable', message: 'Please retry in a moment.' });
+    case 'counter_unavailable':
+      return reply.code(503).send({ error: 'counter_unavailable', message: 'Could not allocate an ID, please retry.' });
+    case 'alias_taken':
+      return reply.code(409).send({ error: 'alias_taken', message: 'This alias is already in use.' });
+    case 'persist_failed':
+      return reply.code(500).send({ error: 'internal_error', message: 'Could not create the short link.' });
+  }
+}
+
 async function handleShorten(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   // Rate limiting runs in the rateLimit('shorten', …) preHandler (see route reg).
 
-  // 1. Validate the body strictly with Zod.
   const parsed = bodySchema.safeParse(request.body);
   if (!parsed.success) {
     return sendValidationError(parsed.error, reply);
   }
   const body = parsed.data;
 
-  // Auth gate: private links require an authenticated owner (401 otherwise).
-  const ownerId = getOwnerId(request);
-  if (body.private && !ownerId) {
-    return reply.code(401).send({ error: 'auth_required', message: 'Sign in to create a private link.' });
-  }
-
-  // Reserved alias check (400).
-  if (body.customAlias && RESERVED_WORDS.has(body.customAlias.toLowerCase())) {
-    return reply
-      .code(400)
-      .send({ error: 'reserved_alias', message: 'This alias is reserved and cannot be used.' });
-  }
-
-  // URL safety: scheme / private-host / DNS-rebinding / self-referential /
-  // domain blocklist / Safe Browsing. Runs only on this write path (never on
-  // the redirect hot path) and before any ID allocation or DB writes. (Zod above
-  // already pre-screens scheme, so validateUrl's INVALID_SCHEME is belt-and-braces.)
+  const execute = getShortenLinkUseCase(request.log);
+  let result;
   try {
-    await validateUrl(body.url, request.log);
+    result = await execute({
+      url: body.url,
+      customAlias: body.customAlias,
+      expiresAt: body.expiresAt ?? null,
+      private: body.private,
+      analytics: body.analytics,
+      ownerId: getOwnerId(request),
+      ipPrefix: ipPrefix(getClientIp(request)),
+      log: request.log,
+    });
   } catch (err) {
-    if (err instanceof UrlSafetyError) {
-      const { status, body: errBody } = urlSafetyResponse(err);
-      return reply.code(status).send(errBody);
-    }
-    // Unexpected error inside the validator → fail closed (do not create a link
-    // we could not vet).
+    // The use-case only rethrows an UNEXPECTED (non-UrlSafetyError) validator
+    // failure → fail closed, exactly as before.
     request.log.error({ err }, 'shorten: url safety check errored');
     return reply.code(500).send({ error: 'internal_error', message: 'Could not validate the URL.' });
   }
 
-  // Per-owner / per-IP active-link quota. Uses the proxy-attested client IP so a
-  // spoofed XFF can't dodge it. (Domain blocklist is enforced inside validateUrl.)
-  const ipPref = ipPrefix(getClientIp(request));
-  try {
-    if (await isOverQuota(ownerId, ipPref)) {
-      return reply.code(429).send({ error: 'quota_exceeded', message: 'Link quota reached.' });
-    }
-  } catch (err) {
-    // A quota-count failure must fail closed on the write path, not silently
-    // let an abuser past the limit.
-    request.log.error({ err }, 'shorten: quota check failed');
-    return reply.code(503).send({ error: 'quota_check_unavailable', message: 'Please retry in a moment.' });
+  if (!result.ok) {
+    return sendShortenError(result.error, reply);
   }
 
-  // 2-3. Allocate a unique ID and derive the short code. Custom aliases also
-  // consume a real ID so link_id uniquely identifies one links row.
-  let seq: bigint;
-  try {
-    seq = await getNextId();
-  } catch (err) {
-    request.log.error({ err }, 'shorten: ID counter unavailable');
-    return reply
-      .code(503)
-      .send({ error: 'counter_unavailable', message: 'Could not allocate an ID, please retry.' });
-  }
-  const id = (seq + COUNTER_OFFSET).toString(); // BIGINT param sent as text
-  const shortCode = body.customAlias ?? mintCode(seq);
-
-  const pgPool = getPool();
-  const client = await pgPool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Generate created_at once in the app and write the SAME value to both
-    // tables. (Using now() in one and a RETURNING round-trip in the other
-    // drifts by sub-millisecond — pg keeps microseconds, JS Date keeps only
-    // milliseconds — which breaks the exact `l.created_at = lcl.created_at`
-    // join used by the read/stats paths.) It's also the partition key.
-    const createdAt = new Date();
-
-    // Insert the global code lookup first: atomically detects alias collisions
-    // (ON CONFLICT DO NOTHING) before we touch the partitioned links table.
-    const lookupSql = body.customAlias
-      ? `INSERT INTO links_code_lookup (short_code, link_id, created_at)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (short_code) DO NOTHING
-         RETURNING short_code`
-      : `INSERT INTO links_code_lookup (short_code, link_id, created_at)
-         VALUES ($1, $2, $3)
-         RETURNING short_code`;
-    const lookup = await client.query(lookupSql, [shortCode, id, createdAt]);
-
-    if (lookup.rows.length === 0) {
-      // Only reachable on the alias path (a fresh unique code can't conflict).
-      await client.query('ROLLBACK');
-      return reply.code(409).send({ error: 'alias_taken', message: 'This alias is already in use.' });
-    }
-
-    await client.query(
-      `INSERT INTO links
-         (id, short_code, long_url, owner_id, is_private, prefer_301, expires_at, created_at, ip_prefix)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [id, shortCode, body.url, ownerId, body.private, !body.analytics, body.expiresAt ?? null, createdAt, ipPref || null],
-    );
-
-    // Explicit commit — data is durable and visible to other clients now.
-    await client.query('COMMIT');
-
-    // Audit log — fire-and-forget (like click recording): never awaited, never
-    // blocks or fails the response. Records who shortened what, from which IP
-    // prefix, for abuse investigation.
-    setImmediate(() => {
-      getPool()
-        .query(
-          `INSERT INTO shorten_audit (short_code, long_url, owner_id, ip_prefix, created_at)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [shortCode, body.url, ownerId, ipPref || null, createdAt],
-        )
-        .catch((err) => request.log.warn({ err, shortCode }, 'shorten: audit write failed (non-fatal)'));
-    });
-
-    // 4. Best-effort cache — only for public, analytics-on (302) links, matching
-    // the redirect read path. Store {u,id} so cache-hit redirects can still
-    // record analytics. A Redis hiccup must not fail link creation.
-    if (!body.private && body.analytics) {
-      try {
-        await setCachedUrl(shortCode, body.url);
-      } catch (err) {
-        request.log.warn({ err, shortCode }, 'shorten: redis cache write failed (non-fatal)');
-      }
-    }
-
-    // 7. Success.
-    shortenTotal.inc({ type: body.customAlias ? 'custom_alias' : 'generated' });
-    return reply.code(201).send({
-      shortUrl: `${SHORT_BASE_URL}/${shortCode}`,
-      code: shortCode,
-      longUrl: body.url,
-      createdAt: createdAt.toISOString(),
-      expiresAt: body.expiresAt ?? null,
-      private: body.private,
-      analytics: body.analytics,
-    });
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    request.log.error({ err }, 'shorten: failed to persist link');
-    return reply.code(500).send({ error: 'internal_error', message: 'Could not create the short link.' });
-  } finally {
-    client.release();
-  }
+  const { value } = result;
+  shortenTotal.inc({ type: body.customAlias ? 'custom_alias' : 'generated' });
+  return reply.code(201).send({
+    shortUrl: `${SHORT_BASE_URL}/${value.shortCode}`,
+    code: value.shortCode,
+    longUrl: value.longUrl,
+    createdAt: value.createdAt.toISOString(),
+    expiresAt: value.expiresAt,
+    private: value.private,
+    analytics: value.analytics,
+  });
 }
 
 export async function registerShortenRoutes(app: FastifyInstance): Promise<void> {
-  // Rate limit: anonymous 10/min by IP, authenticated 120/min by user. The
-  // global `authenticate` onRequest hook has already populated request.user, so
-  // the preHandler can pick the right key/limit (no need to re-run auth here).
+  // Rate limit: anonymous 10/min by IP, authenticated 120/min by user. The global
+  // `authenticate` onRequest hook has already populated request.user.
   app.post('/api/v1/shorten', { preHandler: rateLimit('shorten', 10, 120) }, handleShorten);
 }

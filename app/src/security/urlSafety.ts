@@ -264,7 +264,9 @@ export async function validateUrl(url: string, log: Logger = console): Promise<v
   }
 
   // 4. SELF-REFERENTIAL LOOP --------------------------------------------------
-  const shortDomain = env.SHORT_DOMAIN.toLowerCase();
+  // Strip any :port (dev uses SHORT_DOMAIN=localhost:3000) so the comparison
+  // matches the parsed URL's host (which carries no port for the default scheme).
+  const shortDomain = env.SHORT_DOMAIN.toLowerCase().replace(/:\d+$/, '');
   if (host === shortDomain || host.endsWith(`.${shortDomain}`)) {
     throw new UrlSafetyError('SELF_REFERENTIAL', 'Cannot shorten a link that points back at this shortener.');
   }

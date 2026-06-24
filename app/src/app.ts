@@ -54,12 +54,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.decorate('pg', pool);
   app.decorate('redis', redis);
 
-  // CORS: lets the browser-served UI call this API cross-origin during local
-  // dev (e.g. UI on http://localhost → API on http://localhost:3000). For
-  // production behind nginx (same origin) this is harmless. Reflects the
-  // request origin; tighten to an allowlist before exposing publicly.
+  // CORS: when CORS_ALLOWED_ORIGINS is set, ONLY those origins may make
+  // credentialed cross-origin calls (set it in production). When unset, the
+  // request origin is reflected — convenient for local dev (UI on http://localhost
+  // → API on :3000), and harmless behind nginx (same origin). Reflecting any
+  // origin WITH credentials is a credential/CSRF footgun, so prefer an allowlist
+  // before exposing the API publicly.
+  const corsOrigin = env.CORS_ALLOWED_ORIGINS
+    ? env.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    : true;
   await app.register(cors, {
-    origin: true,
+    origin: corsOrigin,
     credentials: true, // allow the session cookie cross-origin in dev
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

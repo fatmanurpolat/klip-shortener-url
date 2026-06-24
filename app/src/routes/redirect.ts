@@ -119,7 +119,9 @@ function recordClick(
       createdAt: new Date(),
       ipHash: hashIp(clientIp),
       country: getCountry(clientIp),
-      referer: (request.headers.referer as string) ?? '',
+      // Truncate the attacker-controlled Referer before it's persisted to the
+      // partitioned clicks table (prevents row bloat from a giant header).
+      referer: ((request.headers.referer as string) ?? '').slice(0, 512),
       uaBrowser: ua.browser,
       uaOs: ua.os,
       uaDevice: ua.device,
