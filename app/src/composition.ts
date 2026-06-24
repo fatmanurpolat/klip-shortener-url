@@ -26,6 +26,7 @@ export function getShortenLinkUseCase(log: Logger) {
     validator: createUrlSafetyValidator(),
     audit: createPostgresAuditLog(log),
     clock: createSystemClock(),
+    quotas: { anon: env.ANON_LINK_QUOTA, auth: env.USER_LINK_QUOTA },
   });
 }
 

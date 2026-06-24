@@ -103,6 +103,12 @@ const envSchema = z.object({
   // header). When UNSET, the admin API is disabled (every call returns 503).
   ADMIN_SECRET: z.string().min(16).optional(),
 
+  // Active-link caps (not disabled, not expired). USER_LINK_QUOTA limits each
+  // signed-in user; ANON_LINK_QUOTA limits anonymous shorteners per IP prefix.
+  // Over the cap → 429. Deleting/expiring links frees room.
+  USER_LINK_QUOTA: z.coerce.number().int().positive().default(1000),
+  ANON_LINK_QUOTA: z.coerce.number().int().positive().default(100),
+
   RAW_CLICK_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(90),
   LINK_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(120),
 }).superRefine((cfg, ctx) => {
