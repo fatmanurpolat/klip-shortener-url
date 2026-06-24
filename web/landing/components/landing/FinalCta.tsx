@@ -59,7 +59,7 @@ export function FinalCta() {
           <div role="status" aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", alignItems: "flex-start", animation: "klipoPop 240ms var(--ease-spring)" }}>
             <Badge tone="live" dot>sent</Badge>
             <p style={{ margin: 0, fontSize: "var(--text-base)", color: "var(--text-body)" }}>
-              🌸 Check your email — your magic link is on its way. It expires in 15 minutes.
+              🌸 Check your email — your magic link is on its way. It expires soon and can only be used once.
             </p>
           </div>
         ) : (

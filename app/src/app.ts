@@ -30,13 +30,26 @@ declare module 'fastify' {
  * Connections come from the shared db module and are closed via the onClose
  * hook so `app.close()` is sufficient for a clean shutdown.
  */
+// pino-pretty is a devDependency, so it's ABSENT from the production image
+// (npm ci --omit=dev). Guard on its presence so running the prod image with
+// NODE_ENV=development (local stack) falls back to JSON instead of crashing on
+// "unable to determine transport target for pino-pretty".
+const prettyAvailable = (() => {
+  try {
+    require.resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
-      // Pretty, human-readable logs in development; raw JSON in production for
-      // log shippers (transport undefined → Pino's default stdout JSON).
-      transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
+      // Pretty, human-readable logs in development (only when pino-pretty is
+      // installed); raw JSON otherwise (transport undefined → Pino default).
+      transport: env.NODE_ENV === 'development' && prettyAvailable ? { target: 'pino-pretty' } : undefined,
       // Never log auth tokens or session cookies, even at debug level.
       redact: ['req.headers.authorization', 'req.headers.cookie'],
     },

@@ -6,3 +6,4 @@ export * from './UrlValidator';
 export * from './ShortCodeCodec';
 export * from './AuditLog';
 export * from './Clock';
+export * from './EmailSender';

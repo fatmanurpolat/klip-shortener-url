@@ -164,9 +164,6 @@ export interface StatsResponse {
 
 export interface RequestLoginResult {
   message: string;
-  /** Dev-only: the backend hands back the token + a ready magic link. */
-  token?: string;
-  magicLink?: string;
 }
 
 export async function requestLogin(email: string): Promise<RequestLoginResult> {
@@ -180,11 +177,23 @@ export async function requestLogin(email: string): Promise<RequestLoginResult> {
 export interface VerifyResult {
   token: string;
   userId: string;
+  email: string;
 }
 
-/** Complete a magic-link sign-in: sets the session cookie, returns the user id. */
+/** Complete a magic-link sign-in: sets the session cookie, returns the user. */
 export async function verifyToken(token: string): Promise<VerifyResult> {
   const { data } = await request<VerifyResult>("/api/v1/auth/verify", { query: { token } });
+  return data;
+}
+
+export interface SessionUser {
+  userId: string;
+  email: string;
+}
+
+/** Current signed-in user from the session cookie (the account email lives here). */
+export async function getMe(): Promise<SessionUser> {
+  const { data } = await request<SessionUser>("/api/v1/auth/me");
   return data;
 }
 
@@ -203,13 +212,12 @@ export async function listLinks(params: { limit?: number; cursor?: string } = {}
   return data;
 }
 
-/** Probe the session: 200 → authenticated, ApiError 401 → not. */
-export async function probeSession(): Promise<boolean> {
+/** Probe the session: returns the signed-in user, or null on a real 401. */
+export async function probeSession(): Promise<SessionUser | null> {
   try {
-    await listLinks({ limit: 1 });
-    return true;
+    return await getMe();
   } catch (err) {
-    if (err instanceof ApiError && err.status === 401) return false;
+    if (err instanceof ApiError && err.status === 401) return null;
     throw err;
   }
 }

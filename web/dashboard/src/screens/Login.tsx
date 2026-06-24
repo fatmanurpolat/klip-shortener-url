@@ -6,21 +6,19 @@ import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { useAuth } from "@/auth/AuthContext";
-import { requestLogin, ApiError, type RequestLoginResult } from "@/lib/api";
+import { requestLogin, ApiError } from "@/lib/api";
 
 /**
  * Magic-link sign in (no passwords). Submitting calls the real
- * POST /api/v1/auth/request-login. In development the backend returns the token
- * directly, so we surface an "open the app" button that completes the session
- * via verify; in production the user clicks the link we email them.
+ * POST /api/v1/auth/request-login, which emails a one-time link. A session is
+ * ONLY ever established by opening that emailed link — there is deliberately no
+ * email-less sign-in path here.
  */
 export function Login() {
-  const { rememberEmail, completeSignIn } = useAuth();
+  const { rememberEmail } = useAuth();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [devResult, setDevResult] = useState<RequestLoginResult | null>(null);
-  const [entering, setEntering] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,9 +27,8 @@ export function Login() {
     setStatus("sending");
     setErrorMsg("");
     try {
-      const res = await requestLogin(trimmed);
+      await requestLogin(trimmed);
       rememberEmail(trimmed);
-      setDevResult(res.token ? res : null);
       setStatus("sent");
     } catch (err) {
       setErrorMsg(
@@ -42,17 +39,6 @@ export function Login() {
           : "Couldn't send just now — give it another try in a moment.",
       );
       setStatus("error");
-    }
-  }
-
-  async function enterDemo() {
-    if (!devResult?.token) return;
-    setEntering(true);
-    try {
-      await completeSignIn(devResult.token, email.trim());
-    } catch {
-      setErrorMsg("Couldn't open the app — try the link in your email instead.");
-      setEntering(false);
     }
   }
 
@@ -121,27 +107,13 @@ export function Login() {
               <h2 style={{ fontSize: "var(--text-2xl)", marginBottom: 10 }}>Check your inbox</h2>
               <p style={{ color: "var(--text-body)", fontSize: "var(--text-base)", marginBottom: 22 }}>
                 🌸 We sent a magic link to{" "}
-                <strong style={{ color: "var(--rose-700)" }}>{email}</strong>. It expires in 15 minutes.
+                <strong style={{ color: "var(--rose-700)" }}>{email}</strong>. It expires soon and can only be used once.
               </p>
             </div>
 
-            {devResult?.token && (
-              <Button
-                variant="secondary"
-                onClick={enterDemo}
-                disabled={entering}
-                iconRight={entering ? undefined : <Icon icon={ArrowRight} size={16} color="var(--lavender-700)" />}
-              >
-                {entering ? "opening…" : "Open the app (dev)"}
-              </Button>
-            )}
-
             <button
               type="button"
-              onClick={() => {
-                setStatus("idle");
-                setDevResult(null);
-              }}
+              onClick={() => setStatus("idle")}
               style={{
                 display: "block",
                 marginTop: 16,

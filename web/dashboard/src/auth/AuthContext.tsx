@@ -15,8 +15,6 @@ import { logout as apiLogout, probeSession, verifyToken } from "@/lib/api";
 interface AuthState {
   status: "loading" | "authed" | "anon" | "error";
   email: string | null;
-  /** Complete sign-in from a magic-link token (sets cookie server-side). */
-  completeSignIn: (token: string, email?: string) => Promise<void>;
   /** Mark the email we'll show in the shell (called when requesting a login). */
   rememberEmail: (email: string) => void;
   /** Re-run the session probe after a transient boot failure. */
@@ -52,7 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = params.get("token");
       if (token) {
         try {
-          await verifyToken(token);
+          const { email: signedInEmail } = await verifyToken(token);
+          // The server tells us who we are → show it in the shell immediately.
+          if (signedInEmail) rememberEmail(signedInEmail);
           // Strip the token from the URL so a refresh/copy doesn't replay it.
           params.delete("token");
           const clean = window.location.pathname + (params.toString() ? `?${params}` : "") + window.location.hash;
@@ -64,8 +64,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       try {
-        const ok = await probeSession(); // false only on a real 401
-        if (!cancelled) setStatus(ok ? "authed" : "anon");
+        const me = await probeSession(); // null only on a real 401
+        if (!cancelled) {
+          if (me) {
+            rememberEmail(me.email); // keep the account email fresh from the server
+            setStatus("authed");
+          } else {
+            setStatus("anon");
+          }
+        }
       } catch {
         if (!cancelled) setStatus("error"); // network / 5xx → recoverable
       }
@@ -86,15 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const completeSignIn = useCallback(
-    async (token: string, nextEmail?: string) => {
-      await verifyToken(token);
-      if (nextEmail) rememberEmail(nextEmail);
-      setStatus("authed");
-    },
-    [rememberEmail],
-  );
-
   const signOut = useCallback(async () => {
     try {
       await apiLogout();
@@ -110,8 +108,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ status, email, completeSignIn, rememberEmail, retry, signOut }),
-    [status, email, completeSignIn, rememberEmail, retry, signOut],
+    () => ({ status, email, rememberEmail, retry, signOut }),
+    [status, email, rememberEmail, retry, signOut],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
