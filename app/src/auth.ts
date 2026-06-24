@@ -5,7 +5,7 @@ import { env } from './env';
  * JWT helpers for passwordless (magic-link) auth.
  *
  * Two token types, both HS256 and signed with SESSION_SECRET:
- *   - magic-link: short-lived (15m), purpose "magic-link", proves email control.
+ *   - magic-link: short-lived (MAGIC_LINK_TTL, default 15m), purpose "magic-link", proves email control.
  *   - session:    long-lived (30d), purpose "session", authenticates requests.
  *
  * The `purpose` claim is verified so the two token types can't be swapped
@@ -13,7 +13,9 @@ import { env } from './env';
  */
 
 const ALG: Algorithm = 'HS256';
-const MAGIC_LINK_TTL: SignOptions['expiresIn'] = '15m';
+// Cast: env gives a general string; jsonwebtoken's expiresIn wants its ms-string
+// union. The value is trusted config (validated non-empty, default '15m').
+const MAGIC_LINK_TTL = env.MAGIC_LINK_TTL as SignOptions['expiresIn'];
 const SESSION_TTL: SignOptions['expiresIn'] = '30d';
 
 export const SESSION_COOKIE = 'klipo_session';

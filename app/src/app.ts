@@ -30,13 +30,26 @@ declare module 'fastify' {
  * Connections come from the shared db module and are closed via the onClose
  * hook so `app.close()` is sufficient for a clean shutdown.
  */
+// pino-pretty is a devDependency, so it's ABSENT from the production image
+// (npm ci --omit=dev). Guard on its presence so running the prod image with
+// NODE_ENV=development (local stack) falls back to JSON instead of crashing on
+// "unable to determine transport target for pino-pretty".
+const prettyAvailable = (() => {
+  try {
+    require.resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
-      // Pretty, human-readable logs in development; raw JSON in production for
-      // log shippers (transport undefined → Pino's default stdout JSON).
-      transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
+      // Pretty, human-readable logs in development (only when pino-pretty is
+      // installed); raw JSON otherwise (transport undefined → Pino default).
+      transport: env.NODE_ENV === 'development' && prettyAvailable ? { target: 'pino-pretty' } : undefined,
       // Never log auth tokens or session cookies, even at debug level.
       redact: ['req.headers.authorization', 'req.headers.cookie'],
     },
@@ -54,12 +67,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.decorate('pg', pool);
   app.decorate('redis', redis);
 
-  // CORS: lets the browser-served UI call this API cross-origin during local
-  // dev (e.g. UI on http://localhost → API on http://localhost:3000). For
-  // production behind nginx (same origin) this is harmless. Reflects the
-  // request origin; tighten to an allowlist before exposing publicly.
+  // CORS: when CORS_ALLOWED_ORIGINS is set, ONLY those origins may make
+  // credentialed cross-origin calls (set it in production). When unset, the
+  // request origin is reflected — convenient for local dev (UI on http://localhost
+  // → API on :3000), and harmless behind nginx (same origin). Reflecting any
+  // origin WITH credentials is a credential/CSRF footgun, so prefer an allowlist
+  // before exposing the API publicly.
+  const corsOrigin = env.CORS_ALLOWED_ORIGINS
+    ? env.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    : true;
   await app.register(cors, {
-    origin: true,
+    origin: corsOrigin,
     credentials: true, // allow the session cookie cross-origin in dev
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

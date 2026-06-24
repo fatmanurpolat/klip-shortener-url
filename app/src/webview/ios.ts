@@ -29,9 +29,14 @@ function escapeHtml(value: string): string {
 }
 
 // Safe JS string literal for inline <script>: JSON handles quotes/backslashes;
-// escaping "<" prevents a "</script>" (or "<!--") in the URL from breaking out.
+// escaping "<" prevents a "</script>" (or "<!--") in the URL from breaking out,
+// and U+2028/U+2029 (line/paragraph separators) are escaped to match android.ts
+// (they are valid in JSON strings but were string-literal terminators pre-ES2019).
 function jsStringLiteral(value: string): string {
-  return JSON.stringify(value).replace(/</g, '\\u003c');
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 export function buildIosEscapePage(longUrl: string, network: string): string {

@@ -90,6 +90,18 @@ services:
     networks:
       - klip_net
 
+  # Mailpit — local SMTP sink for DEV magic-link emails. The app sends to
+  # mailpit:1025 over the internal network (no host port for SMTP). The web inbox
+  # (8025) is bound to 127.0.0.1 only — it is UNAUTHENTICATED, so never expose it
+  # publicly. For production, point the app's SMTP_* at a real relay and drop this.
+  mailpit:
+    image: axllent/mailpit:v1.30
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks:
+      - klip_net
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped

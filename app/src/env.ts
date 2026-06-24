@@ -1,6 +1,12 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+// Treat an empty env value ("") as "unset" for optional secrets/toggles, so a
+// blank line in .env (e.g. `SMTP_HOST=`) disables the feature instead of failing
+// the min-length check and crash-looping the app on boot.
+const optionalNonEmpty = (min: number) =>
+  z.preprocess((v) => (v === '' ? undefined : v), z.string().min(min).optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -46,6 +52,34 @@ const envSchema = z.object({
   // the check is skipped entirely.
   SAFE_BROWSING_API_KEY: z.string().min(1).optional(),
 
+  // Magic-link email delivery over SMTP (Mailpit in dev; any SMTP relay/provider
+  // in prod). When SMTP_HOST + EMAIL_FROM are set, login emails are actually sent;
+  // otherwise the request degrades (dev returns the link in the response; prod
+  // logs a warning). SMTP_USER/SMTP_PASS are optional (Mailpit needs neither);
+  // SMTP_SECURE=true uses implicit TLS (port 465). EMAIL_FROM is the From address,
+  // e.g. "Klipo <login@klipo.to>".
+  SMTP_HOST: optionalNonEmpty(1),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  SMTP_USER: optionalNonEmpty(1),
+  SMTP_PASS: optionalNonEmpty(1),
+  SMTP_SECURE: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
+  EMAIL_FROM: optionalNonEmpty(3),
+
+  // Dashboard URL the emailed magic link points at: `${APP_BASE_URL}/?token=...`.
+  // The dashboard reads ?token= on load, verifies it (sets the session cookie),
+  // strips it, and shows the signed-in app. Dev: http://localhost:4100 (the Vite
+  // dashboard). Prod: e.g. https://app.klipo.to. When unset, the magic link falls
+  // back to the API verify endpoint directly. Trusted config, not user input.
+  APP_BASE_URL: optionalNonEmpty(1),
+
+  // How long an emailed magic-link stays valid (jsonwebtoken/`ms` format: "15m",
+  // "1h", "24h", "7d"). Shorter = safer if a link leaks; default 15m. The email
+  // copy reflects this value. (Independent of the 30d session that login creates.)
+  MAGIC_LINK_TTL: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).default('15m')),
+
   // Trust X-Forwarded-For (client IP behind a proxy). Set to "true" ONLY when
   // Klipo runs behind a trusted reverse proxy (e.g. nginx) that sets XFF —
   // otherwise clients could spoof their IP and dodge per-IP rate limits. Governs
@@ -54,6 +88,12 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true'),
+
+  // CORS allowlist (comma-separated origins). When SET, only these origins are
+  // allowed (with credentials). When UNSET, the API reflects the request origin —
+  // convenient for local dev, but you SHOULD set an explicit allowlist in
+  // production so a hostile site can't make credentialed cross-origin calls.
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
 
   // Secret for signing magic-link and session JWTs. Required (app refuses to
   // start without it). Use a long, random string in every environment.
@@ -65,7 +105,38 @@ const envSchema = z.object({
 
   RAW_CLICK_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(90),
   LINK_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(120),
+}).superRefine((cfg, ctx) => {
+  // PRODUCTION HARDENING: refuse to boot with placeholder/default signing secrets
+  // or a CHANGE_ME database password. They pass the length checks above but would
+  // ship a remotely-forgeable session/admin secret + a publicly-known DB password
+  // (the two CRITICALs from the security audit). Dev/test are exempt so local
+  // workflows keep using stub values.
+  if (cfg.NODE_ENV !== 'production') return;
+  const flag = (
+    field: 'SESSION_SECRET' | 'HASHIDS_SALT' | 'ADMIN_SECRET' | 'DATABASE_URL',
+    value: string | undefined,
+  ): void => {
+    if (looksLikePlaceholderSecret(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `${field} looks like a placeholder/default — set a real, secret value before running in production`,
+      });
+    }
+  };
+  flag('SESSION_SECRET', cfg.SESSION_SECRET);
+  flag('HASHIDS_SALT', cfg.HASHIDS_SALT);
+  flag('ADMIN_SECRET', cfg.ADMIN_SECRET);
+  flag('DATABASE_URL', cfg.DATABASE_URL);
 });
+
+/** True if a secret/URL still carries a well-known placeholder/default token. */
+export function looksLikePlaceholderSecret(value: string | undefined): boolean {
+  // `your[_-]` is intentionally UNanchored so an embedded placeholder (e.g. a
+  // DATABASE_URL password `…:your_pass@…`) is also caught, not just values that
+  // start with it.
+  return !!value && /change[_-]?me|placeholder|your[_-]|dev[_-]?klip|test[_-]?(secret|salt)/i.test(value);
+}
 
 const parsed = envSchema.safeParse(process.env);
 

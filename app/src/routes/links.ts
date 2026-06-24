@@ -136,12 +136,13 @@ interface OwnedLink {
   expires_at: Date | null;
   is_private: boolean;
   prefer_301: boolean;
+  is_disabled: boolean;
 }
 
 /** Resolve a link (partition-pruned join). Null if it doesn't exist. */
 async function resolveLink(code: string): Promise<OwnedLink | null> {
   const res = await getPool().query<OwnedLink>(
-    `SELECT l.id, l.created_at, l.owner_id, l.long_url, l.expires_at, l.is_private, l.prefer_301
+    `SELECT l.id, l.created_at, l.owner_id, l.long_url, l.expires_at, l.is_private, l.prefer_301, l.is_disabled
        FROM links_code_lookup lcl
        JOIN links l ON l.id = lcl.link_id AND l.created_at = lcl.created_at
       WHERE lcl.short_code = $1`,
@@ -165,6 +166,13 @@ async function handlePatchLink(request: FastifyRequest, reply: FastifyReply): Pr
   if (!link) return reply.code(404).send({ error: 'not_found', message: 'Link not found.' });
   if (link.owner_id !== user.userId) {
     return reply.code(403).send({ error: 'forbidden', message: 'You do not own this link.' });
+  }
+  // An admin-disabled link must NOT be editable by its owner: the PATCH below
+  // re-publishes to the redirect cache (setCachedUrl), which would resurrect a
+  // disabled link as a live 302 — an abuse-mitigation/authorization bypass.
+  // Disabling is terminal for the owner; refuse the edit outright.
+  if (link.is_disabled) {
+    return reply.code(409).send({ error: 'link_disabled', message: 'This link has been disabled and can no longer be edited.' });
   }
 
   // Re-run URL safety on any new destination: PATCH is a write path too, and it

@@ -33,6 +33,17 @@ export const COUNTER_OFFSET: bigint = BigInt(env.COUNTER_OFFSET);
 /** Redis key holding the last issued ID. */
 const COUNTER_KEY = 'klipo:counter';
 
+// Redacted Postgres target (host:port/db, NO userinfo) for error messages, so a
+// connection failure doesn't leak the DATABASE_URL password into the app logs.
+const DB_TARGET: string = (() => {
+  try {
+    const u = new URL(env.DATABASE_URL);
+    return `${u.host}${u.pathname}`;
+  } catch {
+    return 'the database';
+  }
+})();
+
 function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -128,7 +139,7 @@ export async function getNextId(): Promise<bigint> {
     return BigInt(res.rows[0].nextval);
   } catch (err) {
     throw new Error(
-      `Klipo counter: nextval('link_id_seq') failed — Postgres unavailable at ${env.DATABASE_URL} ` +
+      `Klipo counter: nextval('link_id_seq') failed — Postgres unavailable at ${DB_TARGET} ` +
         `or the sequence is missing (run db/init/001_schema.sql). Cause: ${describe(err)}`,
     );
   }
@@ -215,7 +226,7 @@ async function initRedisCounter(): Promise<void> {
   } catch (err) {
     throw new Error(
       `Klipo counter: startup recovery against links_code_lookup failed — Postgres unavailable ` +
-        `at ${env.DATABASE_URL}. Cause: ${describe(err)}`,
+        `at ${DB_TARGET}. Cause: ${describe(err)}`,
     );
   }
 
@@ -239,7 +250,7 @@ async function initPostgresCounter(): Promise<void> {
   } catch (err) {
     throw new Error(
       `Klipo counter: cannot initialize Postgres backend — Postgres unavailable at ` +
-        `${env.DATABASE_URL} or schema not applied. Cause: ${describe(err)}`,
+        `${DB_TARGET} or schema not applied. Cause: ${describe(err)}`,
     );
   }
 
@@ -268,7 +279,7 @@ async function initPostgresCounter(): Promise<void> {
   } catch (err) {
     throw new Error(
       `Klipo counter: failed to fast-forward link_id_seq past existing links — ` +
-        `Postgres unavailable at ${env.DATABASE_URL}. Cause: ${describe(err)}`,
+        `Postgres unavailable at ${DB_TARGET}. Cause: ${describe(err)}`,
     );
   }
 }
