@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/Input";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/Toast";
 import {
-  listLinks, deleteLink, deriveStatus, relativeTime, SHORT_DOMAIN, ApiError,
+  listLinks, deleteLink, deriveStatus, relativeTime, SHORT_DOMAIN, ApiError, claimAnonLinks,
   type LinkItem, type LinkStatus,
 } from "@/lib/api";
 
@@ -37,6 +37,9 @@ export function Dashboard({ onOpenLink, onCreate }: { onOpenLink: (link: LinkIte
     setError(null);
     setLinks(null);
     try {
+      // Adopt any links made anonymously on the landing page (codes in a cookie)
+      // before fetching, so they show up in this list.
+      await claimAnonLinks();
       const page = await listLinks({ limit: 50 });
       setLinks(page.links);
       setNextCursor(page.nextCursor);

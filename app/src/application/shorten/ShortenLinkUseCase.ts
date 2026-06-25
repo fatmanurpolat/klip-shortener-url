@@ -12,9 +12,11 @@ import { COUNTER_OFFSET } from '../../domain/codes';
 import { UrlSafetyError } from '../../security/urlSafety';
 
 // Active-link quotas (not disabled, not expired). Domain policy — lives with the
-// use case, not in a SQL string or the HTTP handler.
+// use case, not in a SQL string or the HTTP handler. AUTH_QUOTA caps each
+// signed-in user at 1,000 active links; ANON_QUOTA caps anonymous shorteners per
+// IP prefix. Disabled/expired links don't count, so deleting/expiring frees room.
 export const ANON_QUOTA = 100;
-export const AUTH_QUOTA = 10_000;
+export const AUTH_QUOTA = 1_000;
 
 // Path segments that must never be a custom alias (they shadow real routes).
 const RESERVED_WORDS = new Set([
@@ -66,6 +68,12 @@ export interface ShortenDeps {
   validator: UrlValidator;
   audit: AuditLog;
   clock: Clock;
+  /**
+   * Active-link caps. Injected by the composition root (env-driven) so the limit
+   * is tunable without code changes; defaults to ANON_QUOTA/AUTH_QUOTA when omitted
+   * (keeps unit tests and any direct caller working).
+   */
+  quotas?: { anon: number; auth: number };
 }
 
 /**
@@ -77,6 +85,7 @@ export interface ShortenDeps {
  */
 export function createShortenLinkUseCase(deps: ShortenDeps) {
   const { links, ids, codec, cache, validator, audit, clock } = deps;
+  const quotas = deps.quotas ?? { anon: ANON_QUOTA, auth: AUTH_QUOTA };
 
   return async function execute(input: ShortenInput): Promise<ShortenResult> {
     // Auth gate: private links require an authenticated owner.
@@ -110,7 +119,7 @@ export function createShortenLinkUseCase(deps: ShortenDeps) {
         input.log.error({ err }, 'shorten: quota check failed');
         return { ok: false, error: { kind: 'quota_unavailable' } };
       }
-      const limit = input.ownerId ? AUTH_QUOTA : ANON_QUOTA;
+      const limit = input.ownerId ? quotas.auth : quotas.anon;
       if (count >= limit) {
         return { ok: false, error: { kind: 'quota_exceeded' } };
       }

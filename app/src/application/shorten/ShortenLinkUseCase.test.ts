@@ -135,6 +135,27 @@ test('over quota (anon at 100) → quota_exceeded', async () => {
   if (!res.ok) assert.equal(res.error.kind, 'quota_exceeded');
 });
 
+test('over quota (signed-in user at 1000) → quota_exceeded', async () => {
+  const h = makeHarness({ links: makeFakeRepo({ activeCount: 1000 }) });
+  const res = await createShortenLinkUseCase(h.deps)(makeInput({ ownerId: 'user-1' }));
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.error.kind, 'quota_exceeded');
+});
+
+test('signed-in user just under the cap (999) → allowed', async () => {
+  const h = makeHarness({ links: makeFakeRepo({ activeCount: 999 }) });
+  const res = await createShortenLinkUseCase(h.deps)(makeInput({ ownerId: 'user-1' }));
+  assert.equal(res.ok, true);
+});
+
+test('quota is configurable: an injected auth cap of 3 blocks at 3', async () => {
+  const h = makeHarness({ links: makeFakeRepo({ activeCount: 3 }) });
+  const deps = { ...h.deps, quotas: { anon: 100, auth: 3 } };
+  const res = await createShortenLinkUseCase(deps)(makeInput({ ownerId: 'user-1' }));
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.error.kind, 'quota_exceeded');
+});
+
 test('quota count error → quota_unavailable (fail closed)', async () => {
   const h = makeHarness({ links: makeFakeRepo({ countThrows: true }) });
   const res = await createShortenLinkUseCase(h.deps)(makeInput());

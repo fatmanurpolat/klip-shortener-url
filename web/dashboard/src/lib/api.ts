@@ -222,6 +222,33 @@ export async function probeSession(): Promise<SessionUser | null> {
   }
 }
 
+/** Short codes a visitor stashed while shortening on the landing (shared cookie). */
+function readAnonCodesCookie(): string[] {
+  if (typeof document === "undefined") return [];
+  const m = document.cookie.match(/(?:^|;\s*)klipo_anon_codes=([^;]*)/);
+  return m ? decodeURIComponent(m[1]).split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
+/**
+ * Adopt links made anonymously on the landing page onto the signed-in account.
+ * Best-effort: never throws, clears the cookie once consumed. Returns how many
+ * previously-unowned links were newly claimed.
+ */
+export async function claimAnonLinks(): Promise<number> {
+  const codes = readAnonCodesCookie();
+  if (codes.length === 0) return 0;
+  try {
+    const { data } = await request<{ claimed: number }>("/api/v1/links/claim", {
+      method: "POST",
+      body: { codes },
+    });
+    document.cookie = "klipo_anon_codes=; path=/; max-age=0; SameSite=Lax";
+    return data.claimed;
+  } catch {
+    return 0; // don't block the dashboard if the claim fails
+  }
+}
+
 export interface PatchLinkBody {
   longUrl?: string;
   expiresAt?: string | null;
