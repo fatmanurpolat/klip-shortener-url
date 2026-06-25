@@ -4,6 +4,8 @@ import { getCachedUrl, setCachedUrl, setTombstone } from '../cache';
 import { detectWebview } from '../webview/detect';
 import { buildAndroidEscapePage } from '../webview/android';
 import { buildIosEscapePage } from '../webview/ios';
+import { toBrowserSafeUrl, isAppHandoffUrl } from '../webview/browserSafe';
+import { buildSoftRedirectPage } from '../webview/softRedirect';
 import { enqueueClick } from '../analytics/clickWriter';
 import { hashIp, getCountry } from '../analytics/geoip';
 import { parseUA } from '../analytics/ua';
@@ -11,7 +13,7 @@ import { rateLimit, getClientIp } from '../security/rateLimit';
 import { performance } from 'node:perf_hooks';
 import { redirectsTotal, cacheHits, redirectDuration } from '../metrics';
 
-type RedirectType = '301' | '302' | 'interstitial' | '404' | 'disabled';
+type RedirectType = '301' | '302' | 'interstitial' | 'soft' | '404' | 'disabled';
 
 /**
  * GET /:code — resolve a short code to its destination and redirect.
@@ -287,11 +289,20 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
     return disabledPage(reply);
   }
 
+  // On mobile, rewrite Instagram/TikTok post URLs to their browser-only embed
+  // form so the OS (Universal Links / App Links) can't yank the user back into
+  // the native app — the whole point of escaping is to land in a real browser.
+  // Desktop ('other') keeps the canonical full page.
+  const target =
+    webview.platform === 'ios' || webview.platform === 'android'
+      ? toBrowserSafeUrl(longUrl)
+      : longUrl;
+
   // Android in-app browser → serve the Chrome-intent escape page (200 HTML),
   // not a redirect. Record the click (is_webview) off the hot path.
   if (webview.isWebview && webview.platform === 'android') {
     recordClick(request, code, linkId, true, webview.network);
-    const html = buildAndroidEscapePage(longUrl, webview.network ?? 'generic');
+    const html = buildAndroidEscapePage(target, webview.network ?? 'generic');
     finish('interstitial', 200);
     return reply
       .code(200)
@@ -302,7 +313,7 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   // iOS in-app browser → serve the Safari-escape interstitial (200 HTML).
   if (webview.isWebview && webview.platform === 'ios') {
     recordClick(request, code, linkId, true, webview.network);
-    const html = buildIosEscapePage(longUrl, webview.network ?? 'generic');
+    const html = buildIosEscapePage(target, webview.network ?? 'generic');
     finish('interstitial', 200);
     return reply
       .code(200)
@@ -312,18 +323,32 @@ async function handleRedirect(request: FastifyRequest, reply: FastifyReply): Pro
   }
   // Non-webview (or webview on another platform) → normal redirect below.
 
+  // Mobile + an app-handoff domain (Instagram/TikTok): a server 3xx would be
+  // captured by Universal Links / App Links and yanked into the native app.
+  // Serve a script-driven redirect page instead — the OS treats a gesture-less
+  // JS navigation like an address-bar load and keeps the user in the browser.
+  if ((webview.platform === 'ios' || webview.platform === 'android') && isAppHandoffUrl(target)) {
+    recordClick(request, code, linkId, false, webview.network);
+    finish('soft', 200);
+    return reply
+      .code(200)
+      .type('text/html; charset=utf-8')
+      .header('Cache-Control', 'no-store')
+      .send(buildSoftRedirectPage(target));
+  }
+
   // 301: cacheable, analytics off — no click tracking.
   if (prefer301) {
     reply.header('Cache-Control', 'public, max-age=31536000');
     finish('301', 301);
-    return reply.redirect(longUrl, 301);
+    return reply.redirect(target, 301);
   }
 
   // 302 (default): not cacheable, analytics on — record click off the hot path.
   recordClick(request, code, linkId, false, webview.network);
   reply.header('Cache-Control', 'no-store');
   finish('302', 302);
-  return reply.redirect(longUrl, 302);
+  return reply.redirect(target, 302);
 }
 
 export async function registerRedirectRoutes(app: FastifyInstance): Promise<void> {

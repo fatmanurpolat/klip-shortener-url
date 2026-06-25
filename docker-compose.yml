@@ -149,6 +149,7 @@ services:
       start_period: 10s
     networks:
       - klip_net
+    
 
   redis-replica-1:
     image: redis:7-alpine
