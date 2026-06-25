@@ -6,7 +6,25 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
-import { shorten, ShortenError, type ShortenResult } from "@/lib/api";
+import { shorten, ShortenError, type ShortenResult, DASHBOARD_URL } from "@/lib/api";
+
+/**
+ * Remember an anonymously-created short code in a cookie so the dashboard can
+ * adopt it after the visitor signs in (the cookie is shared across the landing
+ * and dashboard on the same host). Best-effort; bounded to the last 25 codes.
+ */
+function rememberAnonCode(code: string): void {
+  if (typeof document === "undefined") return;
+  try {
+    const m = document.cookie.match(/(?:^|;\s*)klipo_anon_codes=([^;]*)/);
+    const codes = m ? decodeURIComponent(m[1]).split(",").filter(Boolean) : [];
+    if (!codes.includes(code)) codes.push(code);
+    const value = encodeURIComponent(codes.slice(-25).join(","));
+    document.cookie = `klipo_anon_codes=${value}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+  } catch {
+    /* cookies blocked — skip */
+  }
+}
 
 /**
  * The hero's primary interactive CTA: paste a long URL, get a Klipo short link.
@@ -28,6 +46,7 @@ export function ShortenWidget() {
     setErrorMsg("");
     try {
       const r = await shorten({ url: trimmed });
+      rememberAnonCode(r.code);
       setResult(r);
       setStatus("done");
     } catch (err) {
@@ -130,6 +149,13 @@ export function ShortenWidget() {
           </div>
           <p style={{ margin: "12px 4px 0", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
             Nice — this link now escapes in-app browsers on its own.
+          </p>
+          <p style={{ margin: "8px 4px 0", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
+            📊{" "}
+            <a href={DASHBOARD_URL} style={{ color: "var(--rose-600)", fontWeight: 600 }}>
+              Sign in
+            </a>{" "}
+            to see this link&apos;s click analytics — the links you make here follow you into your dashboard.
           </p>
         </div>
       ) : (

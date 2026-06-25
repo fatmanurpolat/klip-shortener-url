@@ -5,6 +5,7 @@ import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Sparkles } from "lucide-react";
+import { DASHBOARD_URL } from "@/lib/api";
 
 const LINKS: { label: string; href: string }[] = [
   { label: "how it works", href: "#how" },
@@ -40,7 +41,7 @@ export function NavBar() {
         </div>
 
         <div className="lp-nav-ctas">
-          <a href="#cta" className="lp-nav-signin">
+          <a href={DASHBOARD_URL} className="lp-nav-signin">
             <Button variant="ghost" size="sm">
               sign in
             </Button>

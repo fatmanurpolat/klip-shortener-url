@@ -10,6 +10,10 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 export const SHORT_DOMAIN = process.env.NEXT_PUBLIC_SHORT_DOMAIN ?? "klipo.to";
 
+// Where the "sign in" buttons send people: the dashboard app handles the actual
+// magic-link sign-in. Dev: the Vite dashboard on :4100; prod: your dashboard URL.
+export const DASHBOARD_URL = process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:4100";
+
 export interface ShortenRequest {
   url: string;
   customAlias?: string;

@@ -293,8 +293,38 @@ async function handleDeleteLink(request: FastifyRequest, reply: FastifyReply): P
   return reply.code(204).send();
 }
 
+const claimSchema = z.object({
+  codes: z.array(z.string().min(1).max(64)).min(1).max(100),
+});
+
+/**
+ * POST /api/v1/links/claim — attach anonymously-created links (by short code) to
+ * the signed-in user. Only UNOWNED links are claimable (owner_id IS NULL), so a
+ * link that already belongs to someone can never be taken over. The dashboard
+ * calls this on load with the codes a visitor accumulated (in a shared cookie)
+ * while shortening on the landing page before signing in.
+ */
+async function handleClaimLinks(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const user = request.user;
+  if (!user) return reply.code(401).send({ error: 'auth_required' });
+
+  const parsed = claimSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'validation_error', message: 'A non-empty codes array is required.' });
+  }
+
+  const res = await getPool().query(
+    `UPDATE links SET owner_id = $1
+       WHERE owner_id IS NULL
+         AND id IN (SELECT link_id FROM links_code_lookup WHERE short_code = ANY($2::text[]))`,
+    [user.userId, parsed.data.codes],
+  );
+  return reply.code(200).send({ claimed: res.rowCount ?? 0 });
+}
+
 export async function registerLinksRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/v1/links', { preHandler: requireAuth }, handleListLinks);
+  app.post('/api/v1/links/claim', { preHandler: requireAuth }, handleClaimLinks);
   app.patch('/api/v1/links/:code', { preHandler: requireAuth }, handlePatchLink);
   app.delete('/api/v1/links/:code', { preHandler: requireAuth }, handleDeleteLink);
 }
